@@ -39,7 +39,6 @@ build/
 # Dependencies
 node_modules/
 vendor/
-go.sum
 go.mod.bak
 
 # Logs
