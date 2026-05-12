@@ -1,0 +1,83 @@
+export interface User {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: 'employee' | 'it_agent' | 'admin';
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
+export interface Ticket {
+  id: number;
+  title: string;
+  description: string;
+  status: 'open' | 'in_progress' | 'on_hold' | 'resolved' | 'closed';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  type: 'incident' | 'service_request' | 'problem' | 'change';
+  category: string;
+  requester_id: number;
+  requester?: User;
+  assignee_id?: number;
+  assignee?: User;
+  comments?: Comment[];
+  attachments?: Attachment[];
+  due_date?: string;
+  resolved_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Comment {
+  id: number;
+  content: string;
+  is_internal: boolean;
+  ticket_id: number;
+  author_id: number;
+  author?: User;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Attachment {
+  id: number;
+  file_name: string;
+  file_size: number;
+  mime_type: string;
+  file_url: string;
+  uploader_id: number;
+  uploader?: User;
+  ticket_id?: number;
+  comment_id?: number;
+  created_at: string;
+}
+
+export interface AuditLog {
+  id: number;
+  action: string;
+  entity_type: string;
+  entity_id: number;
+  user_id: number;
+  user?: User;
+  old_values?: string;
+  new_values?: string;
+  details?: string;
+  ip_address?: string;
+  created_at: string;
+}
+
+export interface Notification {
+  id: number;
+  user_id: number;
+  title: string;
+  message: string;
+  type: string;
+  is_read: boolean;
+  link?: string;
+  created_at: string;
+}

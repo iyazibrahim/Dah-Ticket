@@ -1,0 +1,51 @@
+# Go Build
+*.out
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.dylib
+bin/
+dist/
+
+# Temporary Files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Go Test Cache
+.testcache
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Backups
+*.bak
+*.backup
+
+# Misc
+.cache/
