@@ -1,11 +1,32 @@
+export type UserRole = 'employee' | 'it_agent' | 'manager' | 'admin';
+
 export interface User {
   id: number;
   first_name: string;
   last_name: string;
   email: string;
-  role: 'employee' | 'it_agent' | 'admin';
+  role: UserRole;
+  is_admin: boolean;
+  is_super_admin: boolean;
   is_active: boolean;
   created_at: string;
+}
+
+export type KBApprovalStatus = 'draft' | 'pending_approval' | 'published' | 'rejected';
+
+export interface KBArticle {
+  id: number;
+  title: string;
+  content: string;
+  category: string;
+  tags: string[];
+  is_published: boolean;
+  approval_status: KBApprovalStatus;
+  view_count: number;
+  author_id: number;
+  author?: User;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AuthResponse {

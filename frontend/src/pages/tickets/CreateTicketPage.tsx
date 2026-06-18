@@ -1,7 +1,9 @@
 import { useState, useMemo, type FormEvent, type ClipboardEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { attachmentAPI, ticketAPI } from '../../services/api';
-import { ArrowLeft, Loader2, AlertCircle, ImagePlus, X } from 'lucide-react';
+import { Loader2, AlertCircle, ImagePlus, X } from 'lucide-react';
+import PageHeader from '../../components/PageHeader';
+import PageContainer from '../../components/PageContainer';
 
 export default function CreateTicketPage() {
   const navigate = useNavigate();
@@ -71,18 +73,15 @@ export default function CreateTicketPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <Link to="/tickets" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6">
-        <ArrowLeft className="h-4 w-4" />
-        Back to tickets
-      </Link>
+    <PageContainer className="max-w-3xl space-y-6">
+      <PageHeader
+        title="Create New Ticket"
+        subtitle="Describe your issue and we'll get it resolved."
+        backTo="/tickets"
+        backLabel="Tickets"
+      />
 
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-border">
-          <h1 className="text-xl font-bold text-foreground">Create New Ticket</h1>
-          <p className="text-sm text-muted-foreground mt-1">Describe your issue and we'll get it resolved.</p>
-        </div>
-
         {error && (
           <div className="mx-6 mt-6 flex items-start gap-3 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl text-red-700 dark:text-red-400 text-sm">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
@@ -218,6 +217,6 @@ export default function CreateTicketPage() {
           </div>
         </form>
       </div>
-    </div>
+    </PageContainer>
   );
 }

@@ -507,7 +507,86 @@ Internal company IT helpdesk system for employee technical issues. Mobile and de
   - VS Code diagnostics report no errors across all touched files.
   - Docker services rebuilt and running with latest changes (`docker compose up -d --build backend frontend`).
 
-## Project Completion Summary
+## Latest Update (May 22, 2026 - Asset UI Rollback + PM Device Requirement)
+- Rolled back asset inventory grouped mode implementation.
+  - Removed backend grouped response branch from `GET /api/itam/assets`.
+  - Restored frontend asset inventory page to original unit-list-only design.
+  - Removed grouped response types and API client helpers.
+- PM finding workflow tightened to prevent `(No label)` entries:
+  - Backend now requires `asset_id` on PM finding create.
+  - Backend update now enforces linked asset presence and refreshes finding labels from the linked asset record.
+  - PM finding `device_label` and `asset_type_label` are auto-derived from linked asset metadata in backend.
+- PM page modal simplified:
+  - `Link Device Asset` moved into main form and marked required.
+  - Removed separate optional/details section for asset linking.
+  - Removed manual free-text device label entry in frontend capture form.
+  - Finding row fallback label updated to avoid showing `(No label)` text.
+- Validation:
+  - Backend compile check: `go build ./...` passes.
+  - Frontend compile/build check: `npm run build` passes.
+
+## Latest Update (May 22, 2026 - PM Scope Safety + Non-Technical Metrics)
+- PM location scope clarity improvements:
+  - Capture actions now require a scoped location selection.
+  - Added clear warning text when scope is `All Locations` (view-only mode).
+  - Add Finding / tile quick-capture actions are disabled until one location is selected.
+  - Scope display now explicitly shows `All Locations (view only)` when not scoped.
+  - Initial PM page load auto-selects the first location if no location is currently selected.
+- PM summary usability improvements for non-technical users:
+  - Replaced dashboard emphasis from MTTR/MTBF to action-first metrics:
+    - `Urgent Issues` (high/critical severity findings)
+    - `Pending Follow-ups` (findings not in resolved state)
+  - Backend summary endpoint now returns `urgent_issues` and `pending_follow_ups`.
+  - Frontend PM cards and explanatory text updated to use the new terminology.
+  - Legacy `mttr_hours` and `mtbf_hours` remain in summary response for compatibility.
+- Validation:
+  - Backend compile check: `go build ./...` passes.
+  - Frontend compile/build check: `npm run build` passes.
+
+## Latest Update (Jun 9, 2026 - Knowledge Base Wiki Pages)
+- Refactored knowledge base from modal-based UI to dedicated wiki routes:
+  - `KnowledgeBasePage` — article list only with links to `/knowledge/:id` and `/knowledge/new`
+  - `ArticleDetailPage` — full read view with breadcrumbs, rendered HTML, approval status badges, and role-based approve/reject/submit actions via `usePermissions()`
+  - `ArticleEditorPage` — ReactQuill editor for `/knowledge/new` and `/knowledge/:id/edit` with image upload via `kbAPI.uploadImage`
+- Routes wired in `App.tsx` with staff guard on create/edit paths.
+- Uses shared `kbAPI`, `KBArticle` type, and `PageHeader` component.
+- Frontend production build passes.
+
+## Latest Update (May 22, 2026 - PM Location Auto-Linking from Asset)
+- PM location workflow refined per technician feedback:
+  - Kept `All Locations` in scope dropdown for viewing/filtering use cases.
+  - Removed hard capture lock based solely on scope dropdown selection.
+  - When technician links an asset in Add Finding modal, PM scope auto-switches to that asset's location.
+  - Save payload now uses linked asset location directly for finding creation.
+- Backend data integrity enforcement:
+  - PM finding create/update now force finding `location_id` to follow linked asset `location_id`.
+  - Backend rejects PM finding operations when linked asset has no location.
+- UI clarity:
+  - Add Finding modal now displays location auto-set hint after asset selection.
+- Validation:
+  - Backend compile check: `go build ./...` passes.
+  - Frontend compile/build check: `npm run build` passes.
+
+## Latest Update (Jun 9, 2026 - UX Workflow & Responsive Overhaul)
+
+### Phase 0a — RBAC Model
+- Added `manager` role, `is_admin`, `is_super_admin` on User model
+- Tiered admin: IT Agent + Delegated Admin vs Manager + Full Admin vs Super Admin
+- Super Admin protection on deactivate (requires another active admin)
+- KB `approval_status` workflow: draft → pending_approval → published/rejected
+- Ticket assign guards: delegated admin → IT agents only; manager/full admin → any staff
+- `POST /api/tickets/:id/accept` endpoint
+
+### Phase 0b–7 — Frontend & UX
+- Shared components: `usePermissions`, `RoleProtectedRoute`, `PageHeader`, `Breadcrumbs`, `DonutChart`, `StatCard`, `StyledSelect`
+- Dashboard redesigned: personal queue, Recent Tickets above fold, responsive donut
+- Tickets: styled assign dropdown, RBAC-gated actions, accept API
+- Knowledge Base: wiki routes (`/knowledge/:id`, `/new`, `/edit`), approval actions, image upload
+- ITAM dashboard: 3-panel layout (Attention, Location, PM), location stats API
+- PM findings: multi-photo upload (`PMFindingPhoto` model + mobile camera capture)
+- System Settings: support email, timezone, notification toggles, KB upload limit
+- Layout: compact omnisearch (tickets + KB + assets), mobile search overlay, permission-based nav
+
 All 12 planned steps have been significantly completed. The system includes:
 - **Authentication**: JWT, bcrypt, RBAC, audit logging
 - **Ticket Management**: Full CRUD, pagination, filtering, role-based access
@@ -520,6 +599,20 @@ All 12 planned steps have been significantly completed. The system includes:
 - **Analytics**: Overview stats, status/priority breakdowns, SLA compliance, trends, agent workload
 - **Refinements**: Full in-app notification system (with bell popover), Audit Logs (History tab on tickets), and Profile Page management.
 - **ITAM (IT Asset Management)**: Lifecycle tracking, warranty monitoring, and deep integration with the ticketing system.
+
+## Latest Update (Jun 9, 2026 - Navigation, Sizing, Site Inspection UX)
+
+- **Consistent navigation**: `BackLink` component; breadcrumbs on detail pages (KB, tickets, assets, site inspection); removed duplicate back+breadcrumb combos
+- **PageContainer** applied to detail/form pages (asset, ticket, KB article, site inspection, scanner, create ticket)
+- **ITAM path simplified**: `/itam` is the single hub; `/itam/assets` redirects to `/itam`; asset detail breadcrumbs link back to `/itam`
+- **Site Inspection**: location picker card grid (required before findings); sticky "Inspecting: {location} · {month}" context bar
+
+## Latest Update (Jun 9, 2026 - UI Polish: Wide Screens, Tickets, ITAM Hub)
+
+- **PageContainer**: Responsive `max-w-7xl xl:max-w-[1400px] 2xl:max-w-[1600px]` applied to main pages; reduced main padding on lg breakpoints
+- **Tickets**: `AssignDropdown` custom popover (replaces native select); Accept/Assign styled consistently; pagination always visible with 10/15/25 per page and page numbers
+- **ITAM hub**: `/itam` merges KPI cards + embedded `AssetInventorySection` (full search/filter/table/CRUD); `/itam/assets` remains as standalone alias
+- **Site Inspections**: Renamed user-facing "PM" labels to Site Inspection terminology (nav, ITAM dashboard, PMReportsPage)
 
 ## Development & Access
 - **Default Admin Credentials**:

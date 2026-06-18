@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
+import { kbAPI } from '../services/kbAPI';
+import type { KBArticle } from '../types';
 import {
   LogOut, ChevronDown, BookOpen, BarChart3, Check, CheckCheck, User,
   Activity, Ticket, Users, X, Menu, Search, Bell, Package, Settings2, ClipboardCheck
@@ -10,19 +13,27 @@ import { itamAPI } from '../services/itamAPI';
 import type { Notification, Ticket as TicketType } from '../types';
 import type { Asset } from '../types/itam';
 
-const navItems = [
+type NavItem = {
+  label: string;
+  href: string;
+  icon: typeof Activity;
+  show?: (perms: ReturnType<typeof usePermissions>) => boolean;
+};
+
+const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: Activity },
   { label: 'Tickets', href: '/tickets', icon: Ticket },
   { label: 'Knowledge Base', href: '/knowledge', icon: BookOpen },
-  { label: 'Assets', href: '/itam', icon: Package, roles: ['admin', 'it_agent'] },
-  { label: 'PM Reports', href: '/itam/pm', icon: ClipboardCheck, roles: ['admin', 'it_agent'] },
-  { label: 'Users', href: '/admin/users', icon: Users, roles: ['admin'] },
-  { label: 'Analytics', href: '/admin/analytics', icon: BarChart3, roles: ['admin'] },
-  { label: 'Settings', href: '/admin/settings', icon: Settings2, roles: ['admin'] },
+  { label: 'Assets', href: '/itam', icon: Package, show: (p) => p.isStaff },
+  { label: 'Site Inspections', href: '/itam/pm', icon: ClipboardCheck, show: (p) => p.isStaff },
+  { label: 'Users', href: '/admin/users', icon: Users, show: (p) => p.canManageUsers },
+  { label: 'Analytics', href: '/admin/analytics', icon: BarChart3, show: (p) => p.isFullAdmin },
+  { label: 'Settings', href: '/admin/settings', icon: Settings2, show: (p) => p.canAccessSettings },
 ];
 
 export default function DashboardLayout() {
   const { user, logout } = useAuth();
+  const perms = usePermissions();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -34,6 +45,8 @@ export default function DashboardLayout() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [ticketResults, setTicketResults] = useState<TicketType[]>([]);
   const [assetResults, setAssetResults] = useState<Asset[]>([]);
+  const [kbResults, setKbResults] = useState<KBArticle[]>([]);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const location = useLocation();
 
@@ -77,10 +90,7 @@ export default function DashboardLayout() {
     }
   };
 
-  const filteredNav = navItems.filter((item) => {
-    if (!item.roles) return true;
-    return user && item.roles.includes(user.role);
-  });
+  const filteredNav = navItems.filter((item) => !item.show || item.show(perms));
 
   const userInitials = user
     ? `${user.first_name[0]}${user.last_name[0]}`.toUpperCase()
@@ -89,7 +99,16 @@ export default function DashboardLayout() {
   const roleLabel: Record<string, string> = {
     employee: 'Employee',
     it_agent: 'IT Agent',
+    manager: 'Manager',
     admin: 'Admin',
+  };
+
+  const displayRole = () => {
+    if (!user) return '';
+    const base = roleLabel[user.role] ?? user.role;
+    if (user.is_super_admin) return `${base} · Super Admin`;
+    if (user.is_admin) return `${base} · Admin`;
+    return base;
   };
 
   useEffect(() => {
@@ -97,6 +116,7 @@ export default function DashboardLayout() {
     if (q.length < 2) {
       setTicketResults([]);
       setAssetResults([]);
+      setKbResults([]);
       setSearchLoading(false);
       return;
     }
@@ -108,15 +128,26 @@ export default function DashboardLayout() {
     searchTimeoutRef.current = setTimeout(async () => {
       setSearchLoading(true);
       try {
-        const [ticketRes, assetRes] = await Promise.all([
+        const requests: Promise<unknown>[] = [
           ticketAPI.list({ page: 1, per_page: 5, search: q }),
-          itamAPI.searchAssets(q),
-        ]);
+          kbAPI.list({ page: 1, per_page: 5, search: q }),
+        ];
+        if (perms.isStaff) requests.push(itamAPI.searchAssets(q));
+        const results = await Promise.all(requests);
+        const ticketRes = results[0] as { data: { tickets: TicketType[] } };
+        const kbRes = results[1] as { data: { articles: KBArticle[] } };
         setTicketResults(ticketRes.data.tickets ?? []);
-        setAssetResults((assetRes.data.assets ?? []).slice(0, 5));
+        setKbResults(kbRes.data.articles ?? []);
+        if (perms.isStaff && results[2]) {
+          const assetRes = results[2] as { data: { assets: Asset[] } };
+          setAssetResults((assetRes.data.assets ?? []).slice(0, 5));
+        } else {
+          setAssetResults([]);
+        }
       } catch {
         setTicketResults([]);
         setAssetResults([]);
+        setKbResults([]);
       } finally {
         setSearchLoading(false);
       }
@@ -127,12 +158,19 @@ export default function DashboardLayout() {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [globalSearch]);
+  }, [globalSearch, perms.isStaff]);
 
   const goTicket = (ticketId: number) => {
     setSearchOpen(false);
     setGlobalSearch('');
     navigate(`/tickets/${ticketId}`);
+  };
+
+  const goArticle = (articleId: number) => {
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
+    setGlobalSearch('');
+    navigate(`/knowledge/${articleId}`);
   };
 
   const goAsset = (assetId: number) => {
@@ -165,7 +203,7 @@ export default function DashboardLayout() {
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed md:sticky top-0 left-0 z-50 md:z-auto h-screen w-72 md:w-64 flex flex-col border-r border-border bg-card transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      <aside className={`fixed md:sticky top-0 left-0 z-50 md:z-auto h-screen w-[85vw] max-w-72 md:w-64 flex flex-col border-r border-border bg-card transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="h-14 px-4 md:px-5 border-b border-border flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5">
             <div className="p-1.5 bg-primary/10 rounded-lg"><Ticket className="h-5 w-5 text-primary" /></div>
@@ -194,7 +232,7 @@ export default function DashboardLayout() {
             <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-semibold text-xs shrink-0">{userInitials}</div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium text-foreground truncate">{user?.first_name} {user?.last_name}</p>
-              <p className="text-xs text-muted-foreground truncate">{user ? roleLabel[user.role] : ''}</p>
+              <p className="text-xs text-muted-foreground truncate">{displayRole()}</p>
             </div>
           </div>
         </div>
@@ -202,87 +240,109 @@ export default function DashboardLayout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 md:px-6 shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="h-14 border-b border-border bg-card grid grid-cols-[1fr_auto] md:grid-cols-[minmax(0,1fr)_minmax(320px,42rem)_minmax(0,1fr)] items-center gap-x-3 px-4 md:px-6 shrink-0">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
             <button className="md:hidden p-1.5 -ml-1 text-muted-foreground hover:text-foreground" onClick={() => setSidebarOpen(true)}>
               <Menu className="h-5 w-5" />
             </button>
             <span className="font-bold text-base md:hidden text-foreground">DahTicket</span>
-            <div className="hidden md:block relative w-full max-w-sm">
-              <div className="flex items-center w-full bg-muted/60 rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
-                <Search className="h-4 w-4 text-muted-foreground mr-2 shrink-0" />
-                <input
-                  type="text"
-                  value={globalSearch}
-                  onChange={(e) => {
-                    setGlobalSearch(e.target.value);
-                    setSearchOpen(true);
-                  }}
-                  onFocus={() => setSearchOpen(true)}
-                  onBlur={() => setTimeout(() => setSearchOpen(false), 120)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleGlobalEnter();
-                    }
-                  }}
-                  placeholder="Search tickets or assets..."
-                  className="bg-transparent border-none outline-none w-full text-sm placeholder:text-muted-foreground text-foreground"
-                />
-              </div>
-
-              {searchOpen && globalSearch.trim().length >= 2 && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden">
-                  {searchLoading ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">Searching...</div>
-                  ) : (ticketResults.length === 0 && assetResults.length === 0) ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">No tickets or assets found</div>
-                  ) : (
-                    <>
-                      {ticketResults.length > 0 && (
-                        <div className="border-b border-border">
-                          <p className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">Tickets</p>
-                          {ticketResults.map((ticket) => (
-                            <button
-                              key={ticket.id}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                goTicket(ticket.id);
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-muted/60"
-                            >
-                              <p className="text-sm text-foreground truncate">#{ticket.id} {ticket.title}</p>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      {assetResults.length > 0 && (
-                        <div>
-                          <p className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">Assets</p>
-                          {assetResults.map((asset) => (
-                            <button
-                              key={asset.id}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                goAsset(asset.id);
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-muted/60"
-                            >
-                              <p className="text-sm text-foreground truncate">{asset.name}</p>
-                              <p className="text-xs text-muted-foreground truncate">{asset.asset_tag || '-'}{asset.location?.name ? ` • ${asset.location.name}` : ''}</p>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+            <button
+              className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
+              onClick={() => setMobileSearchOpen(true)}
+              aria-label="Search"
+            >
+              <Search className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="hidden md:block relative w-full justify-self-center">
+            <div className="flex items-center w-full bg-muted/70 border border-border/60 rounded-xl px-4 py-2.5 shadow-sm focus-within:ring-2 focus-within:ring-primary/25 focus-within:border-primary/30 transition-all">
+              <Search className="h-5 w-5 text-muted-foreground mr-3 shrink-0" />
+              <input
+                type="text"
+                value={globalSearch}
+                onChange={(e) => {
+                  setGlobalSearch(e.target.value);
+                  setSearchOpen(true);
+                }}
+                onFocus={() => setSearchOpen(true)}
+                onBlur={() => setTimeout(() => setSearchOpen(false), 120)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleGlobalEnter();
+                  }
+                }}
+                placeholder="Search tickets, articles, assets..."
+                className="bg-transparent border-none outline-none w-full text-sm placeholder:text-muted-foreground text-foreground"
+              />
+            </div>
+
+            {searchOpen && globalSearch.trim().length >= 2 && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden">
+                {searchLoading ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">Searching...</div>
+                ) : (ticketResults.length === 0 && assetResults.length === 0 && kbResults.length === 0) ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No results found</div>
+                ) : (
+                  <>
+                    {kbResults.length > 0 && (
+                      <div className="border-b border-border">
+                        <p className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">Knowledge Base</p>
+                        {kbResults.map((article) => (
+                          <button
+                            key={article.id}
+                            onMouseDown={(e) => { e.preventDefault(); goArticle(article.id); }}
+                            className="w-full text-left px-3 py-2 hover:bg-muted/60"
+                          >
+                            <p className="text-sm text-foreground truncate">{article.title}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {ticketResults.length > 0 && (
+                      <div className="border-b border-border">
+                        <p className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">Tickets</p>
+                        {ticketResults.map((ticket) => (
+                          <button
+                            key={ticket.id}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              goTicket(ticket.id);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-muted/60"
+                          >
+                            <p className="text-sm text-foreground truncate">#{ticket.id} {ticket.title}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {assetResults.length > 0 && (
+                      <div>
+                        <p className="px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">Assets</p>
+                        {assetResults.map((asset) => (
+                          <button
+                            key={asset.id}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              goAsset(asset.id);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-muted/60"
+                          >
+                            <p className="text-sm text-foreground truncate">{asset.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">{asset.asset_tag || '-'}{asset.location?.name ? ` • ${asset.location.name}` : ''}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 justify-self-end">
             <div className="relative">
               <button 
                 onClick={() => { setNotifOpen(!notifOpen); setProfileOpen(false); }}
@@ -297,7 +357,7 @@ export default function DashboardLayout() {
               {notifOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
-                  <div className="absolute right-0 top-full mt-1 w-80 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden flex flex-col max-h-[85vh]">
+                  <div className="absolute right-0 top-full mt-1 w-[calc(100vw-2rem)] max-w-80 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden flex flex-col max-h-[85vh]">
                     <div className="p-3 border-b border-border flex items-center justify-between bg-muted/30">
                       <h3 className="font-semibold text-sm text-foreground">Notifications</h3>
                       {unreadCount > 0 && (
@@ -385,7 +445,45 @@ export default function DashboardLayout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-muted/20">
+        {mobileSearchOpen && (
+          <div className="md:hidden fixed inset-0 z-[60] bg-background/95 backdrop-blur-sm p-4 pt-16">
+            <button className="absolute top-4 right-4 p-2 text-muted-foreground" onClick={() => setMobileSearchOpen(false)}>
+              <X className="h-5 w-5" />
+            </button>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <input
+                autoFocus
+                type="text"
+                value={globalSearch}
+                onChange={(e) => setGlobalSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleGlobalEnter(); }}
+                placeholder="Search tickets, wiki, assets..."
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-border bg-card text-foreground"
+              />
+            </div>
+            <div className="mt-3 max-h-[70vh] overflow-y-auto space-y-2">
+              {kbResults.map((a) => (
+                <button key={a.id} onClick={() => goArticle(a.id)} className="w-full text-left p-3 rounded-lg border border-border bg-card">
+                  <p className="text-sm font-medium truncate">{a.title}</p>
+                  <p className="text-xs text-muted-foreground">Knowledge Base</p>
+                </button>
+              ))}
+              {ticketResults.map((t) => (
+                <button key={t.id} onClick={() => goTicket(t.id)} className="w-full text-left p-3 rounded-lg border border-border bg-card">
+                  <p className="text-sm font-medium truncate">#{t.id} {t.title}</p>
+                </button>
+              ))}
+              {assetResults.map((a) => (
+                <button key={a.id} onClick={() => goAsset(a.id)} className="w-full text-left p-3 rounded-lg border border-border bg-card">
+                  <p className="text-sm font-medium truncate">{a.name}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-6 xl:p-8 bg-muted/20">
           <Outlet />
         </main>
       </div>

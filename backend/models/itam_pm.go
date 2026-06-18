@@ -50,6 +50,7 @@ type PMFinding struct {
 	ResolvedAt          *time.Time     `json:"resolved_at"`
 	CreatedBy           uint           `json:"created_by"`
 	UpdatedBy           uint           `json:"updated_by"`
+	Photos              []PMFindingPhoto `gorm:"foreignKey:FindingID" json:"photos,omitempty"`
 	CreatedAt           time.Time      `json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 	DeletedAt           gorm.DeletedAt `gorm:"index" json:"-"`

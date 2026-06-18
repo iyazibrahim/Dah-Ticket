@@ -11,6 +11,9 @@ import TicketDetailPage from './pages/tickets/TicketDetailPage';
 import UsersPage from './pages/admin/UsersPage';
 import AnalyticsPage from './pages/admin/AnalyticsPage';
 import KnowledgeBasePage from './pages/knowledge/KnowledgeBasePage';
+import ArticleDetailPage from './pages/knowledge/ArticleDetailPage';
+import ArticleEditorPage from './pages/knowledge/ArticleEditorPage';
+import RoleProtectedRoute from './components/RoleProtectedRoute';
 import ProfilePage from './pages/auth/ProfilePage';
 import ITAMDashboard from './pages/itam/ITAMDashboard';
 import AssetListPage from './pages/itam/AssetListPage';
@@ -37,19 +40,35 @@ function App() {
               <Route path="/tickets/new" element={<CreateTicketPage />} />
               <Route path="/tickets/:id" element={<TicketDetailPage />} />
               <Route path="/knowledge" element={<KnowledgeBasePage />} />
+              <Route
+                path="/knowledge/new"
+                element={
+                  <RoleProtectedRoute guard="staff">
+                    <ArticleEditorPage />
+                  </RoleProtectedRoute>
+                }
+              />
+              <Route path="/knowledge/:id" element={<ArticleDetailPage />} />
+              <Route
+                path="/knowledge/:id/edit"
+                element={
+                  <RoleProtectedRoute guard="staff">
+                    <ArticleEditorPage />
+                  </RoleProtectedRoute>
+                }
+              />
               <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/admin/users" element={<UsersPage />} />
-              <Route path="/admin/analytics" element={<AnalyticsPage />} />
-              {/* ITAM Routes */}
-              <Route path="/itam" element={<ITAMDashboard />} />
-              <Route path="/itam/scanner" element={<AssetScannerPage />} />
-              <Route path="/itam/pm" element={<PMReportsPage />} />
-              <Route path="/itam/assets" element={<AssetListPage />} />
-              <Route path="/itam/assets/new" element={<AssetFormPage />} />
-              <Route path="/itam/assets/:id" element={<AssetDetailPage />} />
-              <Route path="/itam/assets/:id/edit" element={<AssetFormPage />} />
-              <Route path="/admin/settings" element={<ITAMSettingsPage />} />
-              <Route path="/admin/itam/settings" element={<ITAMSettingsPage />} />
+              <Route path="/admin/users" element={<RoleProtectedRoute guard="fullAdmin"><UsersPage /></RoleProtectedRoute>} />
+              <Route path="/admin/analytics" element={<RoleProtectedRoute guard="fullAdmin"><AnalyticsPage /></RoleProtectedRoute>} />
+              <Route path="/itam" element={<RoleProtectedRoute guard="staff"><ITAMDashboard /></RoleProtectedRoute>} />
+              <Route path="/itam/scanner" element={<RoleProtectedRoute guard="staff"><AssetScannerPage /></RoleProtectedRoute>} />
+              <Route path="/itam/pm" element={<RoleProtectedRoute guard="staff"><PMReportsPage /></RoleProtectedRoute>} />
+              <Route path="/itam/assets" element={<RoleProtectedRoute guard="staff"><AssetListPage /></RoleProtectedRoute>} />
+              <Route path="/itam/assets/new" element={<RoleProtectedRoute guard="staff"><AssetFormPage /></RoleProtectedRoute>} />
+              <Route path="/itam/assets/:id" element={<RoleProtectedRoute guard="staff"><AssetDetailPage /></RoleProtectedRoute>} />
+              <Route path="/itam/assets/:id/edit" element={<RoleProtectedRoute guard="staff"><AssetFormPage /></RoleProtectedRoute>} />
+              <Route path="/admin/settings" element={<RoleProtectedRoute guard="fullAdmin"><ITAMSettingsPage /></RoleProtectedRoute>} />
+              <Route path="/admin/itam/settings" element={<RoleProtectedRoute guard="fullAdmin"><ITAMSettingsPage /></RoleProtectedRoute>} />
             </Route>
           </Route>
 

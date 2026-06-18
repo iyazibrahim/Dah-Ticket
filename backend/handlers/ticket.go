@@ -8,6 +8,7 @@ import (
 
 	"dahticket-backend/config"
 	"dahticket-backend/database"
+	"dahticket-backend/middleware"
 	"dahticket-backend/models"
 	"dahticket-backend/services"
 
@@ -260,6 +261,7 @@ func UpdateTicket(c *gin.Context) {
 
 	userID := c.MustGet("userID").(uint)
 	userRole := c.MustGet("userRole").(models.Role)
+	actor, _ := middleware.GetUser(c)
 
 	var ticket models.Ticket
 	if err := database.DB.Preload("Requester").Preload("Assignee").First(&ticket, uint(ticketID)).Error; err != nil {
@@ -267,7 +269,6 @@ func UpdateTicket(c *gin.Context) {
 		return
 	}
 
-	// Snapshot old values for audit
 	oldValues := map[string]interface{}{
 		"title": ticket.Title, "description": ticket.Description,
 		"status": ticket.Status, "priority": ticket.Priority,
@@ -275,21 +276,47 @@ func UpdateTicket(c *gin.Context) {
 		"assignee_id": ticket.AssigneeID,
 	}
 
-	// Permission checks for employees
 	if userRole == models.RoleEmployee {
 		if ticket.RequesterID != userID {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only edit your own tickets"})
 			return
 		}
-		// Employees cannot change priority or assignment
-		if req.Priority != nil || req.AssigneeID != nil {
-			c.JSON(http.StatusForbidden, gin.H{"error": "You cannot change priority or assignment"})
+		if req.Priority != nil || req.AssigneeID != nil || req.Type != nil || req.Category != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You cannot change priority, assignment, type, or category"})
 			return
 		}
-		// Employees can only edit title/description of open tickets, but they can update status anytime
 		if ticket.Status != models.StatusOpen && (req.Title != nil || req.Description != nil) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You can only edit details of open tickets"})
 			return
+		}
+		if req.Status != nil {
+			newStatus := models.TicketStatus(*req.Status)
+			allowed := newStatus == models.StatusClosed && ticket.Status == models.StatusResolved ||
+				newStatus == models.StatusInProgress && ticket.Status == models.StatusResolved
+			if !allowed {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Employees can only close or reopen resolved tickets"})
+				return
+			}
+		}
+	} else if actor.IsStaffMember() {
+		if req.AssigneeID != nil {
+			if !actor.CanAssignITAgents() {
+				c.JSON(http.StatusForbidden, gin.H{"error": "You do not have permission to assign tickets"})
+				return
+			}
+		}
+		if req.Priority != nil || req.Type != nil || req.Category != nil {
+			if !actor.IsStaffMember() {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Staff access required"})
+				return
+			}
+		}
+		if req.Status != nil {
+			newStatus := models.TicketStatus(*req.Status)
+			if newStatus == models.StatusInProgress && ticket.AssigneeID != nil && *ticket.AssigneeID != userID && !actor.CanAssignAnyone() {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Only the assignee or a manager can move this ticket to in progress"})
+				return
+			}
 		}
 	}
 
@@ -304,18 +331,17 @@ func UpdateTicket(c *gin.Context) {
 		changes = append(changes, "description updated")
 		ticket.Description = *req.Description
 	}
-	if req.Priority != nil {
+	if req.Priority != nil && actor.IsStaffMember() {
 		changes = append(changes, fmt.Sprintf("priority: %s → %s", ticket.Priority, *req.Priority))
 		ticket.Priority = models.TicketPriority(*req.Priority)
-		// Recalculate SLA due date based on new priority
 		newDue := config.GetSLADueDate(*req.Priority, ticket.CreatedAt)
 		ticket.DueDate = &newDue
 	}
-	if req.Type != nil {
+	if req.Type != nil && actor.IsStaffMember() {
 		changes = append(changes, fmt.Sprintf("type: %s → %s", ticket.Type, *req.Type))
 		ticket.Type = models.TicketType(*req.Type)
 	}
-	if req.Category != nil {
+	if req.Category != nil && actor.IsStaffMember() {
 		changes = append(changes, fmt.Sprintf("category: %s → %s", ticket.Category, *req.Category))
 		ticket.Category = *req.Category
 	}
@@ -339,14 +365,17 @@ func UpdateTicket(c *gin.Context) {
 			ticket.AssigneeID = nil
 			ticket.Assignee = nil
 		} else {
-			// Verify assignee exists and is an agent or admin
 			var assignee models.User
 			if err := database.DB.First(&assignee, *req.AssigneeID).Error; err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Assignee not found"})
 				return
 			}
-			if assignee.Role == models.RoleEmployee {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Tickets can only be assigned to IT Agents or Admins"})
+			if !assignee.IsAssignableStaff() || !assignee.IsActive {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Tickets can only be assigned to active staff members"})
+				return
+			}
+			if actor.IsDelegatedAdmin() && !actor.CanAssignAnyone() && assignee.Role != models.RoleITAgent {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Delegated admins can only assign tickets to IT agents"})
 				return
 			}
 			changes = append(changes, fmt.Sprintf("assigned to: %s %s", assignee.FirstName, assignee.LastName))
@@ -410,6 +439,61 @@ func UpdateTicket(c *gin.Context) {
 			fmt.Sprintf("/tickets/%d", ticket.ID),
 		)
 	}
+
+	c.JSON(http.StatusOK, gin.H{"ticket": toTicketResponse(ticket)})
+}
+
+// AcceptTicket assigns an unassigned ticket to the current staff member and moves it to in_progress.
+func AcceptTicket(c *gin.Context) {
+	ticketID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+
+	actor, ok := middleware.GetUser(c)
+	if !ok || !actor.CanAcceptTickets() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Staff access required"})
+		return
+	}
+
+	var ticket models.Ticket
+	if err := database.DB.Preload("Requester").Preload("Assignee").First(&ticket, uint(ticketID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Ticket not found"})
+		return
+	}
+
+	if ticket.Status != models.StatusOpen && ticket.Status != models.StatusOnHold {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Only open or on-hold tickets can be accepted"})
+		return
+	}
+
+	if ticket.AssigneeID != nil && *ticket.AssigneeID != actor.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "This ticket is assigned to another staff member"})
+		return
+	}
+
+	oldValues := map[string]interface{}{
+		"status": ticket.Status, "assignee_id": ticket.AssigneeID,
+	}
+
+	assigneeID := actor.ID
+	ticket.AssigneeID = &assigneeID
+	ticket.Status = models.StatusInProgress
+
+	if err := database.DB.Save(&ticket).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to accept ticket"})
+		return
+	}
+
+	database.DB.Preload("Requester").Preload("Assignee").First(&ticket, ticket.ID)
+
+	newValues := map[string]interface{}{
+		"status": ticket.Status, "assignee_id": ticket.AssigneeID,
+	}
+	LogAudit(c, models.AuditActionAssign, "ticket", ticket.ID,
+		ToJSON(oldValues), ToJSON(newValues),
+		fmt.Sprintf("Ticket #%d accepted by %s", ticket.ID, actor.Email))
 
 	c.JSON(http.StatusOK, gin.H{"ticket": toTicketResponse(ticket)})
 }
@@ -584,7 +668,6 @@ func GetTicketStats(c *gin.Context) {
 // GetPersonalTicketStats returns current-month personal stats for dashboard personalization.
 func GetPersonalTicketStats(c *gin.Context) {
 	userID := c.MustGet("userID").(uint)
-	userRole := c.MustGet("userRole").(models.Role)
 
 	now := time.Now()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
@@ -605,7 +688,8 @@ func GetPersonalTicketStats(c *gin.Context) {
 		Year:  now.Year(),
 	}
 
-	if userRole == models.RoleAdmin || userRole == models.RoleITAgent {
+	user, _ := middleware.GetUser(c)
+	if user.IsStaffMember() {
 		// "Accepted" is modeled as assignment actions performed by the current staff member this month.
 		database.DB.Model(&models.AuditLog{}).
 			Where("user_id = ? AND entity_type = ? AND action = ? AND created_at >= ? AND created_at < ?", userID, "ticket", models.AuditActionAssign, monthStart, nextMonthStart).

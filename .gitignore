@@ -9,6 +9,7 @@
 *.pem
 
 # IDE & Editor Files
+.cursor/
 .vscode/
 .idea/
 *.swp

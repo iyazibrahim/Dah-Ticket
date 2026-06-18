@@ -1,6 +1,8 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, QrCode, ShieldCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Camera, QrCode, ShieldCheck } from 'lucide-react';
+import PageHeader from '../../components/PageHeader';
+import PageContainer from '../../components/PageContainer';
 import { Html5Qrcode } from 'html5-qrcode';
 import { itamAPI } from '../../services/itamAPI';
 
@@ -68,21 +70,18 @@ export default function AssetScannerPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <Link to="/itam" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft size={16} /> Back to ITAM Dashboard
-        </Link>
-      </div>
+    <PageContainer className="space-y-6 max-w-3xl">
+      <PageHeader
+        title="Asset Scanner"
+        subtitle="Scan secured ITAM QR tags. Generic QR apps cannot resolve asset data."
+        backTo="/itam"
+        backLabel="Assets"
+      />
 
       <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <QrCode className="text-primary" /> Asset Scanner
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Scan secured ITAM QR tags. Generic QR apps cannot resolve asset data.
-          </p>
+        <div className="flex items-center gap-2 text-foreground font-medium">
+          <QrCode className="text-primary h-5 w-5" />
+          Scan QR Code
         </div>
 
         <div className="bg-muted/30 border border-border rounded-xl p-3 flex items-center gap-2 text-sm text-muted-foreground">
@@ -130,7 +129,7 @@ export default function AssetScannerPage() {
 
         {error && <p className="text-sm text-rose-500">{error}</p>}
       </div>
-    </div>
+    </PageContainer>
   );
 }
 

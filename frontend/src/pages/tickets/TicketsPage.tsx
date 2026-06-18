@@ -1,25 +1,35 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { adminAPI, ticketAPI, type TicketFilters } from '../../services/api';
-import { useAuth } from '../../contexts/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import AssignDropdown from '../../components/AssignDropdown';
+import PageHeader from '../../components/PageHeader';
+import PageContainer from '../../components/PageContainer';
 import type { Ticket, User } from '../../types';
 import { Loader2, Plus, Search, ChevronLeft, ChevronRight, Filter, Ticket as TicketIcon, CheckCircle2 } from 'lucide-react';
 
+const PER_PAGE_OPTIONS = [10, 15, 25] as const;
+
 export default function TicketsPage() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialSearch = searchParams.get('search') ?? '';
-  const { user } = useAuth();
+  const initialPerPage = Number(searchParams.get('per_page') ?? 15);
+  const perPage = PER_PAGE_OPTIONS.includes(initialPerPage as (typeof PER_PAGE_OPTIONS)[number])
+    ? initialPerPage
+    : 15;
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [agents, setAgents] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<TicketFilters>({ page: 1, per_page: 15, search: initialSearch || undefined });
+  const [filters, setFilters] = useState<TicketFilters>({ page: 1, per_page: perPage, search: initialSearch || undefined });
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [showFilters, setShowFilters] = useState(false);
   const [quickActionLoading, setQuickActionLoading] = useState<number | null>(null);
 
-  const isStaff = user?.role === 'admin' || user?.role === 'it_agent';
+  const perms = usePermissions();
+  const isStaff = perms.canAcceptTickets;
 
   const fetchTickets = useCallback(async () => {
     setIsLoading(true);
@@ -36,6 +46,13 @@ export default function TicketsPage() {
   }, [filters]);
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.search) params.set('search', filters.search);
+    if (filters.per_page && filters.per_page !== 15) params.set('per_page', String(filters.per_page));
+    setSearchParams(params, { replace: true });
+  }, [filters.search, filters.per_page, setSearchParams]);
 
   useEffect(() => {
     const fetchAgents = async () => {
@@ -77,10 +94,39 @@ export default function TicketsPage() {
   };
 
   const canShowAssign = (ticket: Ticket) => {
-    if (!isStaff) return false;
-    // Keep quick assign available only for unassigned, actionable tickets.
+    if (!perms.canAssignITAgents) return false;
     return !ticket.assignee_id && (ticket.status === 'open' || ticket.status === 'on_hold');
   };
+
+  const acceptTicket = async (ticket: Ticket) => {
+    setQuickActionLoading(ticket.id);
+    try {
+      await ticketAPI.accept(ticket.id);
+      await fetchTickets();
+    } catch (err) {
+      console.error('Failed to accept ticket:', err);
+    } finally {
+      setQuickActionLoading(null);
+    }
+  };
+
+  const agentOptions = useMemo(
+    () => agents.map((a) => ({ value: String(a.id), label: `${a.first_name} ${a.last_name}` })),
+    [agents],
+  );
+
+  const currentPage = filters.page ?? 1;
+  const currentPerPage = filters.per_page ?? 15;
+  const rangeStart = total === 0 ? 0 : (currentPage - 1) * currentPerPage + 1;
+  const rangeEnd = Math.min(total, currentPage * currentPerPage);
+
+  const visiblePages = useMemo(() => {
+    const windowSize = 5;
+    const start = Math.max(1, currentPage - Math.floor(windowSize / 2));
+    const end = Math.min(totalPages, start + windowSize - 1);
+    const adjustedStart = Math.max(1, end - windowSize + 1);
+    return Array.from({ length: end - adjustedStart + 1 }, (_, index) => adjustedStart + index);
+  }, [currentPage, totalPages]);
 
   const statusColors: Record<string, string> = {
     open: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -107,21 +153,53 @@ export default function TicketsPage() {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Tickets</h1>
-          <p className="text-sm text-muted-foreground mt-1">{total} total tickets</p>
-        </div>
-        <Link to="/tickets/new" className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm hover:shadow-md">
-          <Plus className="h-4 w-4" />
-          New Ticket
-        </Link>
-      </div>
+  const renderActions = (ticket: Ticket) => {
+    if (!isStaff) return <span className="text-xs text-muted-foreground">-</span>;
 
-      {/* Search + Filter bar */}
+    return (
+      <div className="flex max-w-full items-center gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+        {(ticket.status === 'open' || ticket.status === 'on_hold') && (
+          <button
+            type="button"
+            disabled={quickActionLoading === ticket.id}
+            onClick={() => acceptTicket(ticket)}
+            className="inline-flex shrink-0 items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 min-h-[44px] md:min-h-0"
+            title="Take ticket and move to In Progress"
+          >
+            {quickActionLoading === ticket.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+            Accept
+          </button>
+        )}
+        {canShowAssign(ticket) && (
+          <AssignDropdown
+            options={agentOptions}
+            disabled={quickActionLoading === ticket.id}
+            loading={quickActionLoading === ticket.id}
+            onSelect={(val) => {
+              const selected = Number(val);
+              if (!Number.isNaN(selected) && selected > 0) {
+                void quickAssign(ticket, selected, false);
+              }
+            }}
+          />
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <PageContainer className="space-y-5">
+      <PageHeader
+        title="Tickets"
+        subtitle={`${total} total tickets`}
+        actions={
+          <Link to="/tickets/new" className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-colors shadow-sm">
+            <Plus className="h-4 w-4" />
+            New Ticket
+          </Link>
+        }
+      />
+
       <div className="bg-card border border-border rounded-xl p-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 flex items-center bg-muted/60 rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-primary/20 transition-all">
@@ -181,7 +259,6 @@ export default function TicketsPage() {
         )}
       </div>
 
-      {/* Ticket List */}
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center h-48">
@@ -195,7 +272,6 @@ export default function TicketsPage() {
           </div>
         ) : (
           <>
-            {/* Desktop header */}
             <div className="hidden md:grid grid-cols-12 gap-4 px-5 py-3 bg-muted/40 text-xs font-medium text-muted-foreground uppercase tracking-wider border-b border-border">
               <div className="col-span-1">ID</div>
               <div className="col-span-3">Title</div>
@@ -209,124 +285,84 @@ export default function TicketsPage() {
             <div className="divide-y divide-border">
               {tickets.map((ticket) => (
                 <Link to={`/tickets/${ticket.id}`} key={ticket.id} className="block hover:bg-muted/50 transition-colors">
-                  {/* Desktop row */}
                   <div className="hidden md:grid grid-cols-12 gap-4 px-5 py-4 items-center">
                     <div className="col-span-1 text-sm font-mono text-muted-foreground">#{ticket.id}</div>
-                    <div className="col-span-3 text-sm font-medium text-foreground truncate">{ticket.title}</div>
+                    <div className="col-span-3 text-sm font-medium text-foreground truncate" title={ticket.title}>{ticket.title}</div>
                     <div className="col-span-2">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[ticket.status]}`}>{statusLabels[ticket.status]}</span>
                     </div>
                     <div className={`col-span-1 text-sm font-medium capitalize ${priorityColors[ticket.priority]}`}>{ticket.priority}</div>
                     <div className="col-span-2 text-sm text-muted-foreground truncate">{ticket.requester?.first_name} {ticket.requester?.last_name}</div>
                     <div className="col-span-1 text-sm text-muted-foreground">{timeAgo(ticket.created_at)}</div>
-                    <div className="col-span-2" onClick={(e) => e.preventDefault()}>
-                      {isStaff ? (
-                        <div className="flex max-w-full items-center gap-1.5 overflow-hidden">
-                          {(ticket.status === 'open' || ticket.status === 'on_hold') && (
-                            <button
-                              type="button"
-                              disabled={quickActionLoading === ticket.id}
-                              onClick={() => quickAssign(ticket, ticket.assignee_id ?? user?.id ?? null, true)}
-                              className="inline-flex shrink-0 items-center gap-1 px-2 py-1 rounded-md bg-primary text-primary-foreground text-xs hover:bg-primary/90 disabled:opacity-50"
-                              title="Accept ticket and move to In Progress"
-                            >
-                              <CheckCircle2 className="h-3 w-3" /> Accept
-                            </button>
-                          )}
-                          {canShowAssign(ticket) && (
-                            <select
-                              value=""
-                              disabled={quickActionLoading === ticket.id}
-                              onChange={(e) => {
-                                const selected = Number(e.target.value);
-                                if (!Number.isNaN(selected) && selected > 0) {
-                                  void quickAssign(ticket, selected, false);
-                                }
-                              }}
-                              className="w-28 px-2 py-1 rounded-md border border-border bg-card text-foreground text-xs"
-                            >
-                              <option value="">Assign...</option>
-                              {agents.map((a) => (
-                                <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>
-                              ))}
-                            </select>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">-</span>
-                      )}
-                    </div>
+                    <div className="col-span-2">{renderActions(ticket)}</div>
                   </div>
 
-                  {/* Mobile card */}
                   <div className="md:hidden p-4">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="text-sm font-mono text-muted-foreground">#{ticket.id}</span>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[ticket.status]}`}>{statusLabels[ticket.status]}</span>
                       <span className={`text-xs font-medium capitalize ${priorityColors[ticket.priority]}`}>{ticket.priority}</span>
                     </div>
-                    <p className="text-sm font-medium text-foreground truncate">{ticket.title}</p>
+                    <p className="text-sm font-medium text-foreground">{ticket.title}</p>
                     <p className="text-xs text-muted-foreground mt-1">{ticket.requester?.first_name} {ticket.requester?.last_name} · {timeAgo(ticket.created_at)}</p>
-                    {isStaff && (
-                      <div className="flex max-w-full items-center gap-1.5 overflow-hidden mt-3" onClick={(e) => e.preventDefault()}>
-                        {(ticket.status === 'open' || ticket.status === 'on_hold') && (
-                          <button
-                            type="button"
-                            disabled={quickActionLoading === ticket.id}
-                            onClick={() => quickAssign(ticket, ticket.assignee_id ?? user?.id ?? null, true)}
-                            className="inline-flex shrink-0 items-center gap-1 px-2 py-1 rounded-md bg-primary text-primary-foreground text-xs hover:bg-primary/90 disabled:opacity-50"
-                          >
-                            <CheckCircle2 className="h-3 w-3" /> Accept
-                          </button>
-                        )}
-                        {canShowAssign(ticket) && (
-                          <select
-                            value=""
-                            disabled={quickActionLoading === ticket.id}
-                            onChange={(e) => {
-                              const selected = Number(e.target.value);
-                              if (!Number.isNaN(selected) && selected > 0) {
-                                void quickAssign(ticket, selected, false);
-                              }
-                            }}
-                            className="w-28 px-2 py-1 rounded-md border border-border bg-card text-foreground text-xs"
-                          >
-                            <option value="">Assign...</option>
-                            {agents.map((a) => (
-                              <option key={a.id} value={a.id}>{a.first_name} {a.last_name}</option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    )}
+                    <div className="mt-3">{renderActions(ticket)}</div>
                   </div>
                 </Link>
               ))}
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="px-5 py-3 border-t border-border flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
-                  Page {filters.page} of {totalPages}
-                </span>
+            <div className="px-5 py-3 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <span className="text-sm text-muted-foreground">
+                Showing {rangeStart}–{rangeEnd} of {total}
+              </span>
+              <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <button disabled={filters.page === 1}
+                  <label htmlFor="per-page" className="text-xs text-muted-foreground">Per page</label>
+                  <select
+                    id="per-page"
+                    value={currentPerPage}
+                    onChange={(e) => setFilters((p) => ({ ...p, page: 1, per_page: Number(e.target.value) }))}
+                    className="px-2 py-1 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    {PER_PAGE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    disabled={currentPage === 1}
                     onClick={() => setFilters((p) => ({ ...p, page: (p.page || 1) - 1 }))}
-                    className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
                     <ChevronLeft className="h-4 w-4" />
                   </button>
-                  <button disabled={filters.page === totalPages}
+                  {visiblePages.map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      onClick={() => setFilters((p) => ({ ...p, page: pageNum }))}
+                      className={`min-w-[2rem] px-2 py-1 rounded-lg text-sm transition-colors ${
+                        pageNum === currentPage
+                          ? 'bg-primary text-primary-foreground'
+                          : 'border border-border hover:bg-muted text-foreground'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+                  <button
+                    disabled={currentPage === totalPages || totalPages === 0}
                     onClick={() => setFilters((p) => ({ ...p, page: (p.page || 1) + 1 }))}
-                    className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    className="p-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
               </div>
-            )}
+            </div>
           </>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

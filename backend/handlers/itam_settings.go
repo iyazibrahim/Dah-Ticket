@@ -23,6 +23,14 @@ type UpdateITAMSettingsRequest struct {
 	SLACriticalHours *int    `json:"sla_critical_hours"`
 	OrganizationName *string `json:"organization_name"`
 	LogoBase64       *string `json:"logo_base64"`
+	SupportEmail     *string `json:"support_email"`
+	Timezone         *string `json:"timezone"`
+	NotifyTicketCreated  *bool   `json:"notify_ticket_created"`
+	NotifyTicketAssigned *bool   `json:"notify_ticket_assigned"`
+	NotifyTicketStatus   *bool   `json:"notify_ticket_status"`
+	NotifyNewComment     *bool   `json:"notify_new_comment"`
+	EmailSenderName      *string `json:"email_sender_name"`
+	KBMaxUploadMB        *int    `json:"kb_max_upload_mb"`
 }
 
 func getOrCreateITAMSettings(tx *gorm.DB) (models.ITAMSettings, error) {
@@ -268,6 +276,30 @@ func UpdateITAMSettings(c *gin.Context) {
 	}
 	if req.LogoBase64 != nil {
 		settings.LogoBase64 = strings.TrimSpace(*req.LogoBase64)
+	}
+	if req.SupportEmail != nil {
+		settings.SupportEmail = strings.TrimSpace(*req.SupportEmail)
+	}
+	if req.Timezone != nil {
+		settings.Timezone = strings.TrimSpace(*req.Timezone)
+	}
+	if req.NotifyTicketCreated != nil {
+		settings.NotifyTicketCreated = *req.NotifyTicketCreated
+	}
+	if req.NotifyTicketAssigned != nil {
+		settings.NotifyTicketAssigned = *req.NotifyTicketAssigned
+	}
+	if req.NotifyTicketStatus != nil {
+		settings.NotifyTicketStatus = *req.NotifyTicketStatus
+	}
+	if req.NotifyNewComment != nil {
+		settings.NotifyNewComment = *req.NotifyNewComment
+	}
+	if req.EmailSenderName != nil {
+		settings.EmailSenderName = strings.TrimSpace(*req.EmailSenderName)
+	}
+	if req.KBMaxUploadMB != nil && *req.KBMaxUploadMB > 0 {
+		settings.KBMaxUploadMB = *req.KBMaxUploadMB
 	}
 
 	if err := database.DB.Save(&settings).Error; err != nil {

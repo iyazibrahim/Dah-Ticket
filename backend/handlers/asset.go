@@ -422,12 +422,28 @@ func GetITAMStats(c *gin.Context) {
 		Group("assets.status_id, asset_statuses.name").
 		Find(&statusBreakdown)
 
+	type LocationResult struct {
+		LocationID *uint  `json:"location_id"`
+		Name       string `json:"name"`
+		Count      int64  `json:"count"`
+	}
+	var byLocation []LocationResult
+	database.DB.Table("assets").
+		Select("assets.location_id, COALESCE(locations.name, 'Unassigned') as name, count(*) as count").
+		Joins("LEFT JOIN locations ON locations.id = assets.location_id").
+		Where("assets.deleted_at IS NULL AND assets.is_active = ?", true).
+		Group("assets.location_id, locations.name").
+		Order("count DESC").
+		Limit(8).
+		Find(&byLocation)
+
 	c.JSON(http.StatusOK, gin.H{
 		"total_assets":           totalAssets,
 		"unassigned":             unassigned,
 		"warranty_expiring_soon": warrantyExpiringSoon,
 		"warranty_expired":       warrantyExpired,
 		"by_status":              statusBreakdown,
+		"by_location":            byLocation,
 	})
 }
 

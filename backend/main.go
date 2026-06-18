@@ -48,6 +48,7 @@ func main() {
 		&models.PMFailureLog{},
 		&models.PMCalibrationRecord{},
 		&models.PMChecklistItem{},
+		&models.PMFindingPhoto{},
 	)
 	if err != nil {
 		log.Fatal("Failed to run database migrations:", err)
@@ -119,6 +120,7 @@ func main() {
 			tickets.GET("/:id", handlers.GetTicket)
 			tickets.GET("/:id/audit", handlers.GetTicketAuditLogs)
 			tickets.PUT("/:id", handlers.UpdateTicket)
+			tickets.POST("/:id/accept", handlers.AcceptTicket)
 			tickets.DELETE("/:id", handlers.DeleteTicket)
 
 			// Comment routes (nested under tickets)
@@ -138,21 +140,25 @@ func main() {
 		{
 			kb.GET("", handlers.ListKBArticles)
 			kb.GET("/categories", handlers.GetKBCategories)
+			kb.GET("/uploads/:filename", handlers.ServeKBUpload)
 			kb.GET("/:id", handlers.GetKBArticle)
 		}
-
-		// List available agents (for ticket assignment dropdowns)
-		protected.GET("/agents", handlers.AdminListAgents)
 	}
 
-	// --- Staff-only Routes (agents + admins) ---
+	// --- Staff-only Routes ---
 	staff := protected.Group("")
-	staff.Use(middleware.RoleRequired(models.RoleITAgent, models.RoleAdmin))
+	staff.Use(middleware.StaffRequired())
 	{
-		// KB management (create/update/delete)
+		staff.GET("/agents", handlers.AdminListAgents)
+
+		// KB management
 		staff.POST("/kb", handlers.CreateKBArticle)
+		staff.POST("/kb/upload", handlers.UploadKBImage)
 		staff.PUT("/kb/:id", handlers.UpdateKBArticle)
 		staff.DELETE("/kb/:id", handlers.DeleteKBArticle)
+		staff.POST("/kb/:id/submit-for-approval", handlers.SubmitKBArticleForApproval)
+		staff.POST("/kb/:id/approve", handlers.ApproveKBArticle)
+		staff.POST("/kb/:id/reject", handlers.RejectKBArticle)
 
 		// ITAM - Asset read (staff-accessible search for dropdowns)
 		staff.GET("/itam/assets/search", handlers.SearchAssets)
@@ -182,6 +188,10 @@ func main() {
 			itam.POST("/pm/findings", handlers.CreatePMFinding)
 			itam.PUT("/pm/findings/:id", handlers.UpdatePMFinding)
 			itam.DELETE("/pm/findings/:id", handlers.DeletePMFinding)
+			itam.POST("/pm/findings/:id/photos", handlers.UploadPMFindingPhoto)
+			itam.GET("/pm/findings/:id/photos", handlers.ListPMFindingPhotos)
+			itam.GET("/pm/findings/:id/photos/:photoId", handlers.ServePMFindingPhoto)
+			itam.DELETE("/pm/findings/:id/photos/:photoId", handlers.DeletePMFindingPhoto)
 		}
 
 		// ITAM Reference data - read (accessible by staff, write by admin below)
@@ -201,9 +211,9 @@ func main() {
 	// ITAM - my assigned assets (all authenticated users)
 	protected.GET("/itam/my-assets", handlers.ListMyAssets)
 
-	// --- Admin-only Routes ---
+	// --- Full Admin Routes ---
 	admin := protected.Group("/admin")
-	admin.Use(middleware.RoleRequired(models.RoleAdmin))
+	admin.Use(middleware.FullAdminRequired())
 	{
 		admin.GET("/users", handlers.AdminListUsers)
 		admin.GET("/users/:id", handlers.AdminGetUser)

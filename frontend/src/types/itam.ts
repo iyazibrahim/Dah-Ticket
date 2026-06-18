@@ -108,6 +108,14 @@ export interface ITAMSettings {
   sla_critical_hours: number;
   organization_name: string;
   logo_base64: string;
+  support_email?: string;
+  timezone?: string;
+  notify_ticket_created?: boolean;
+  notify_ticket_assigned?: boolean;
+  notify_ticket_status?: boolean;
+  notify_new_comment?: boolean;
+  email_sender_name?: string;
+  kb_max_upload_mb?: number;
 }
 
 export interface PMFailureLog {
@@ -197,6 +205,8 @@ export interface PMSummary {
   total_reports: number;
   total_findings?: number;
   total_failures?: number;
+  urgent_issues?: number;
+  pending_follow_ups?: number;
   mttr_hours: number;
   mtbf_hours: number;
 }
@@ -227,6 +237,7 @@ export interface ITAMStats {
   warranty_expiring_soon: number;
   warranty_expired: number;
   by_status: Array<{ status_id: number; name: string; count: number }>;
+  by_location?: Array<{ location_id: number | null; name: string; count: number }>;
 }
 
 export interface ImportPreviewAssetMatch {

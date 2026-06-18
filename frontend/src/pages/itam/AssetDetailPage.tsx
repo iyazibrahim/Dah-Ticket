@@ -1,13 +1,15 @@
 ﻿import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
-  Package, ArrowLeft, Edit2, Trash2, Tag, User, MapPin,
+  Package, Edit2, Trash2, Tag, User, MapPin,
   Shield, FileText, Ticket, QrCode,
   AlertTriangle, Clock, CheckCircle, ExternalLink,
 } from 'lucide-react';
 import { itamAPI } from '../../services/itamAPI';
 import type { Asset, AssetTicketLink } from '../../types/itam';
-import { useAuth } from '../../contexts/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import PageHeader from '../../components/PageHeader';
+import PageContainer from '../../components/PageContainer';
 import { QRCodeSVG } from 'qrcode.react';
 
 const statusColors: Record<string, string> = {
@@ -85,7 +87,7 @@ function formatDisplayAssetTag(asset: Pick<Asset, 'asset_tag' | 'location'>) {
 export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { isStaff } = usePermissions();
 
   const [asset, setAsset] = useState<Asset | null>(null);
   const [linkedTickets, setLinkedTickets] = useState<AssetTicketLink[]>([]);
@@ -94,8 +96,6 @@ export default function AssetDetailPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [qrToken, setQrToken] = useState('');
-
-  const isStaff = user?.role === 'admin' || user?.role === 'it_agent';
 
   useEffect(() => {
     const fetchAsset = async () => {
@@ -107,7 +107,7 @@ export default function AssetDetailPage() {
         setQrToken(qrRes.data.token);
       } catch (err) {
         console.error('Failed to load asset', err);
-        navigate('/itam/assets');
+        navigate('/itam');
       } finally {
         setLoading(false);
       }
@@ -120,7 +120,7 @@ export default function AssetDetailPage() {
     setDeleting(true);
     try {
       await itamAPI.deleteAsset(asset.id);
-      navigate('/itam/assets');
+      navigate('/itam');
     } catch (err) {
       console.error('Delete failed', err);
     } finally {
@@ -140,33 +140,30 @@ export default function AssetDetailPage() {
   const statusName = asset.status?.name ?? '';
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Back + actions */}
-      <div className="flex items-center justify-between gap-4">
-        <Link
-          to="/itam/assets"
-          className="flex items-center gap-2 text-muted-foreground hover:text-foreground text-sm transition-colors"
-        >
-          <ArrowLeft size={16} />
-          Back to Assets
-        </Link>
-        {isStaff && (
-          <div className="flex items-center gap-2">
-            <Link
-              to={`/itam/assets/${asset.id}/edit`}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-accent text-foreground rounded-lg text-sm transition-colors"
-            >
-              <Edit2 size={14} /> Edit
-            </Link>
-            <button
-              onClick={() => setDeleteConfirm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 rounded-lg text-sm transition-colors border border-rose-500/20"
-            >
-              <Trash2 size={14} /> Delete
-            </button>
-          </div>
-        )}
-      </div>
+    <PageContainer className="space-y-6">
+      <PageHeader
+        title={asset.name}
+        backTo="/itam"
+        backLabel="Assets"
+        actions={
+          isStaff ? (
+            <div className="flex items-center gap-2">
+              <Link
+                to={`/itam/assets/${asset.id}/edit`}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-accent text-foreground rounded-lg text-sm transition-colors"
+              >
+                <Edit2 size={14} /> Edit
+              </Link>
+              <button
+                onClick={() => setDeleteConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 rounded-lg text-sm transition-colors border border-rose-500/20"
+              >
+                <Trash2 size={14} /> Delete
+              </button>
+            </div>
+          ) : undefined
+        }
+      />
 
       {/* Hero card */}
       <div className="bg-card border border-border rounded-2xl p-6">
@@ -176,7 +173,6 @@ export default function AssetDetailPage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-3 mb-1">
-              <h1 className="text-xl font-bold text-foreground">{asset.name}</h1>
               <span
                 className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
                   statusColors[statusName] ?? 'bg-muted text-muted-foreground border-border'
@@ -403,7 +399,7 @@ export default function AssetDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

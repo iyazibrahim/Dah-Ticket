@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"fmt"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,7 +44,7 @@ type PMChecklistInput struct {
 
 type PMFindingInput struct {
 	LocationID          uint       `json:"location_id" binding:"required"`
-	AssetID             *uint      `json:"asset_id"`
+	AssetID             *uint      `json:"asset_id" binding:"required"`
 	DeviceLabel         string     `json:"device_label"`
 	AssetTypeLabel      string     `json:"asset_type_label"`
 	FindingType         string     `json:"finding_type" binding:"required"`
@@ -129,6 +132,26 @@ func parseMonthRange(month string) (time.Time, time.Time, error) {
 	return start, end, nil
 }
 
+func getFindingAssetSnapshot(assetID uint) (models.Asset, string, error) {
+	var asset models.Asset
+	if err := database.DB.Preload("Type").Preload("Category").First(&asset, assetID).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return models.Asset{}, "", fmt.Errorf("asset not found")
+		}
+		return models.Asset{}, "", err
+	}
+
+	assetTypeLabel := strings.TrimSpace(asset.Type.Name)
+	if assetTypeLabel == "" {
+		assetTypeLabel = strings.TrimSpace(asset.Category.Name)
+	}
+	if assetTypeLabel == "" {
+		assetTypeLabel = "Device"
+	}
+
+	return asset, assetTypeLabel, nil
+}
+
 func ListPMFindings(c *gin.Context) {
 	query := database.DB.Model(&models.PMFinding{})
 
@@ -155,7 +178,7 @@ func ListPMFindings(c *gin.Context) {
 	}
 
 	var findings []models.PMFinding
-	if err := query.Preload("Location").Preload("Asset").Order("observed_at DESC, created_at DESC").Find(&findings).Error; err != nil {
+	if err := query.Preload("Location").Preload("Asset").Preload("Photos").Order("observed_at DESC, created_at DESC").Find(&findings).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list PM findings"})
 		return
 	}
@@ -169,6 +192,21 @@ func CreatePMFinding(c *gin.Context) {
 		return
 	}
 
+	if req.AssetID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "asset_id is required"})
+		return
+	}
+
+	asset, assetTypeLabel, err := getFindingAssetSnapshot(*req.AssetID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if asset.LocationID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "linked asset must have a location"})
+		return
+	}
+
 	observedAt := req.ObservedAt
 	if observedAt.IsZero() {
 		observedAt = time.Now()
@@ -176,10 +214,10 @@ func CreatePMFinding(c *gin.Context) {
 
 	userID := c.MustGet("userID").(uint)
 	finding := models.PMFinding{
-		LocationID:          req.LocationID,
+		LocationID:          *asset.LocationID,
 		AssetID:             req.AssetID,
-		DeviceLabel:         strings.TrimSpace(req.DeviceLabel),
-		AssetTypeLabel:      strings.TrimSpace(req.AssetTypeLabel),
+		DeviceLabel:         strings.TrimSpace(asset.Name),
+		AssetTypeLabel:      assetTypeLabel,
 		FindingType:         strings.TrimSpace(req.FindingType),
 		Severity:            normalizeValue(req.Severity, "medium"),
 		Status:              normalizeValue(req.Status, "open"),
@@ -232,12 +270,23 @@ func UpdatePMFinding(c *gin.Context) {
 	if req.AssetID != nil {
 		finding.AssetID = *req.AssetID
 	}
-	if req.DeviceLabel != nil {
-		finding.DeviceLabel = strings.TrimSpace(*req.DeviceLabel)
+	if finding.AssetID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "asset_id is required"})
+		return
 	}
-	if req.AssetTypeLabel != nil {
-		finding.AssetTypeLabel = strings.TrimSpace(*req.AssetTypeLabel)
+
+	asset, assetTypeLabel, err := getFindingAssetSnapshot(*finding.AssetID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
+	if asset.LocationID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "linked asset must have a location"})
+		return
+	}
+	finding.LocationID = *asset.LocationID
+	finding.DeviceLabel = strings.TrimSpace(asset.Name)
+	finding.AssetTypeLabel = assetTypeLabel
 	if req.FindingType != nil {
 		finding.FindingType = strings.TrimSpace(*req.FindingType)
 	}
@@ -594,16 +643,33 @@ func GetPMSummary(c *gin.Context) {
 	}
 
 	if len(reports) == 0 && len(findings) == 0 {
-		c.JSON(http.StatusOK, gin.H{"summary": gin.H{"total_reports": 0, "total_findings": 0, "mttr_hours": 0, "mtbf_hours": 0}})
+		c.JSON(http.StatusOK, gin.H{"summary": gin.H{
+			"total_reports":       0,
+			"total_findings":      0,
+			"urgent_issues":       0,
+			"pending_follow_ups":  0,
+			"mttr_hours":          0,
+			"mtbf_hours":          0,
+		}})
 		return
 	}
 
 	totalFindings := len(findings)
+	urgentIssues := 0
+	pendingFollowUps := 0
 	var mttr float64
 	resolvedCount := 0
 	failureTimes := make([]time.Time, 0, len(findings))
 	for _, finding := range findings {
 		failureTimes = append(failureTimes, finding.ObservedAt)
+		severity := strings.ToLower(strings.TrimSpace(finding.Severity))
+		status := strings.ToLower(strings.TrimSpace(finding.Status))
+		if severity == "high" || severity == "critical" {
+			urgentIssues++
+		}
+		if status != "resolved" {
+			pendingFollowUps++
+		}
 		if finding.ResolvedAt != nil {
 			mttr += finding.ResolvedAt.Sub(finding.ObservedAt).Hours()
 			resolvedCount++
@@ -624,10 +690,12 @@ func GetPMSummary(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"summary": gin.H{
-		"total_reports":  len(reports),
-		"total_findings": totalFindings,
-		"mttr_hours":     mttr,
-		"mtbf_hours":     mtbf,
+		"total_reports":      len(reports),
+		"total_findings":     totalFindings,
+		"urgent_issues":      urgentIssues,
+		"pending_follow_ups": pendingFollowUps,
+		"mttr_hours":         mttr,
+		"mtbf_hours":         mtbf,
 	}})
 }
 
@@ -900,4 +968,114 @@ func TriggerPMTicket(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"ticket": ticket, "report": report})
+}
+
+// UploadPMFindingPhoto uploads one or more photos for a PM finding.
+func UploadPMFindingPhoto(c *gin.Context) {
+	findingID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid finding ID"})
+		return
+	}
+
+	var finding models.PMFinding
+	if err := database.DB.First(&finding, uint(findingID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Finding not found"})
+		return
+	}
+
+	form, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid multipart form"})
+		return
+	}
+
+	files := form.File["photos"]
+	if len(files) == 0 {
+		file, ferr := c.FormFile("photo")
+		if ferr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "At least one photo is required"})
+			return
+		}
+		files = []*multipart.FileHeader{file}
+	}
+
+	userID := c.MustGet("userID").(uint)
+	dir := filepath.Join("uploads", "pm", fmt.Sprintf("%d", finding.ID))
+	os.MkdirAll(dir, 0755)
+
+	var saved []models.PMFindingPhoto
+	for i, file := range files {
+		if file.Size > 10*1024*1024 {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(file.Filename))
+		allowed := map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true}
+		if !allowed[ext] {
+			continue
+		}
+		filename := fmt.Sprintf("%d_%d%s", time.Now().UnixNano(), i, ext)
+		dest := filepath.Join(dir, filename)
+		if err := c.SaveUploadedFile(file, dest); err != nil {
+			continue
+		}
+		photo := models.PMFindingPhoto{
+			FindingID: finding.ID,
+			FilePath:  dest,
+			SortOrder: i,
+			CreatedBy: userID,
+		}
+		database.DB.Create(&photo)
+		saved = append(saved, photo)
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"photos": saved})
+}
+
+// ListPMFindingPhotos returns photos for a finding.
+func ListPMFindingPhotos(c *gin.Context) {
+	findingID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid finding ID"})
+		return
+	}
+
+	var photos []models.PMFindingPhoto
+	database.DB.Where("finding_id = ?", findingID).Order("sort_order ASC, created_at ASC").Find(&photos)
+	c.JSON(http.StatusOK, gin.H{"photos": photos})
+}
+
+// ServePMFindingPhoto serves a PM finding photo file.
+func ServePMFindingPhoto(c *gin.Context) {
+	photoID, err := strconv.ParseUint(c.Param("photoId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid photo ID"})
+		return
+	}
+
+	var photo models.PMFindingPhoto
+	if err := database.DB.First(&photo, uint(photoID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
+		return
+	}
+	c.File(photo.FilePath)
+}
+
+// DeletePMFindingPhoto removes a photo from a finding.
+func DeletePMFindingPhoto(c *gin.Context) {
+	photoID, err := strconv.ParseUint(c.Param("photoId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid photo ID"})
+		return
+	}
+
+	var photo models.PMFindingPhoto
+	if err := database.DB.First(&photo, uint(photoID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Photo not found"})
+		return
+	}
+
+	os.Remove(photo.FilePath)
+	database.DB.Delete(&photo)
+	c.JSON(http.StatusOK, gin.H{"message": "Photo deleted"})
 }

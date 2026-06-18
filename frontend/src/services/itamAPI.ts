@@ -133,16 +133,7 @@ export const itamAPI = {
   getSettings: (): Promise<{ data: { settings: ITAMSettings } }> =>
     api.get('/admin/itam/settings'),
 
-  updateSettings: (data: {
-    asset_tag_prefix?: string;
-    auto_generate_tag?: boolean;
-    sla_low_hours?: number;
-    sla_medium_hours?: number;
-    sla_high_hours?: number;
-    sla_critical_hours?: number;
-    organization_name?: string;
-    logo_base64?: string;
-  }): Promise<{ data: { settings: ITAMSettings } }> =>
+  updateSettings: (data: Partial<ITAMSettings>): Promise<{ data: { settings: ITAMSettings } }> =>
     api.put('/admin/itam/settings', data),
 
   // Admin bulk operations
@@ -205,6 +196,14 @@ export const itamAPI = {
 
   createPMFinding: (data: Partial<PMFinding>): Promise<{ data: { finding: PMFinding } }> =>
     api.post('/itam/pm/findings', data),
+
+  uploadPMFindingPhotos: (findingId: number, files: File[]) => {
+    const form = new FormData();
+    files.forEach((f) => form.append('photos', f));
+    return api.post(`/itam/pm/findings/${findingId}/photos`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 
   updatePMFinding: (id: number, data: Partial<PMFinding>): Promise<{ data: { finding: PMFinding } }> =>
     api.put(`/itam/pm/findings/${id}`, data),

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../../services/api';
 import { Loader2, TrendingUp, Clock, AlertTriangle, Users, CheckCircle2, Target, BarChart3 } from 'lucide-react';
+import PageContainer from '../../components/PageContainer';
 
 interface OverviewStats {
   total_tickets: number;
@@ -64,7 +65,7 @@ export default function AnalyticsPage() {
   const maxTrend = Math.max(...trendData.map(d => d.created), 1);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <PageContainer className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Analytics Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">System-wide insights and performance metrics.</p>
@@ -228,6 +229,6 @@ export default function AnalyticsPage() {
           )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

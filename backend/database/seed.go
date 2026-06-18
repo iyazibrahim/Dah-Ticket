@@ -10,14 +10,54 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// SeedDefaultAdmin creates a default admin user if one does not exist.
-// This ensures the system is usable immediately after first deployment.
-func SeedDefaultAdmin() {
-	var count int64
-	DB.Model(&models.User{}).Where("role = ?", models.RoleAdmin).Count(&count)
+// MigrateUserRoles upgrades legacy admin role users to manager+is_admin model.
+func MigrateUserRoles() {
+	var legacyAdmins []models.User
+	DB.Where("role = ?", models.RoleAdmin).Find(&legacyAdmins)
+	for _, u := range legacyAdmins {
+		updates := map[string]interface{}{
+			"role":      models.RoleManager,
+			"is_admin":  true,
+		}
+		if strings.EqualFold(u.Email, "admin@dahticket.com") {
+			updates["is_super_admin"] = true
+		}
+		DB.Model(&u).Updates(updates)
+		log.Printf("Migrated legacy admin user %s to manager+is_admin", u.Email)
+	}
 
+	// Ensure seeded super admin flags on existing account
+	DB.Model(&models.User{}).Where("LOWER(email) = LOWER(?)", "admin@dahticket.com").
+		Updates(map[string]interface{}{
+			"role":           models.RoleManager,
+			"is_admin":       true,
+			"is_super_admin": true,
+		})
+
+	// Sync KB approval_status from is_published for existing articles
+	DB.Exec(`UPDATE kb_articles SET approval_status = 'published' WHERE is_published = true AND (approval_status IS NULL OR approval_status = '' OR approval_status = 'draft')`)
+	DB.Exec(`UPDATE kb_articles SET approval_status = 'draft' WHERE is_published = false AND (approval_status IS NULL OR approval_status = '')`)
+}
+
+// SeedDefaultAdmin creates the Super Admin user if one does not exist.
+func SeedDefaultAdmin() {
+	MigrateUserRoles()
+
+	var count int64
+	DB.Model(&models.User{}).Where("is_super_admin = ?", true).Count(&count)
 	if count > 0 {
-		log.Println("Admin user already exists, skipping seed.")
+		log.Println("Super Admin already exists, skipping seed.")
+		return
+	}
+
+	var existing models.User
+	if err := DB.Where("LOWER(email) = LOWER(?)", "admin@dahticket.com").First(&existing).Error; err == nil {
+		DB.Model(&existing).Updates(map[string]interface{}{
+			"role":           models.RoleManager,
+			"is_admin":       true,
+			"is_super_admin": true,
+		})
+		log.Println("Promoted existing admin@dahticket.com to Super Admin.")
 		return
 	}
 
@@ -28,12 +68,14 @@ func SeedDefaultAdmin() {
 	}
 
 	admin := models.User{
-		FirstName: "System",
-		LastName:  "Admin",
-		Email:     "admin@dahticket.com",
-		Password:  string(hashedPassword),
-		Role:      models.RoleAdmin,
-		IsActive:  true,
+		FirstName:    "System",
+		LastName:     "Admin",
+		Email:        "admin@dahticket.com",
+		Password:     string(hashedPassword),
+		Role:         models.RoleManager,
+		IsAdmin:      true,
+		IsSuperAdmin: true,
+		IsActive:     true,
 	}
 
 	if err := DB.Create(&admin).Error; err != nil {
@@ -41,7 +83,7 @@ func SeedDefaultAdmin() {
 		return
 	}
 
-	log.Println("Default admin user seeded: admin@dahticket.com / admin123")
+	log.Println("Super Admin seeded: admin@dahticket.com / admin123")
 }
 
 // SeedDefaultUsers creates default employee and IT agent accounts if they do not exist.

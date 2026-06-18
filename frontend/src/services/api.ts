@@ -90,6 +90,9 @@ export const ticketAPI = {
   update: (id: number, data: Partial<Pick<Ticket, 'title' | 'description' | 'status' | 'priority' | 'type' | 'category'> & { assignee_id: number | null }>) =>
     api.put<{ ticket: Ticket }>(`/tickets/${id}`, data),
 
+  accept: (id: number) =>
+    api.post<{ ticket: Ticket }>(`/tickets/${id}/accept`),
+
   delete: (id: number) =>
     api.delete(`/tickets/${id}`),
 
@@ -142,7 +145,7 @@ export const adminAPI = {
 
   getUser: (id: number) => api.get(`/admin/users/${id}`),
 
-  createUser: (data: { first_name: string; last_name: string; email: string; password: string; role: string }) =>
+  createUser: (data: { first_name: string; last_name: string; email: string; password: string; role: string; is_admin?: boolean }) =>
     api.post('/admin/users', data),
 
   updateUser: (id: number, data: Record<string, unknown>) =>

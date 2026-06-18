@@ -14,9 +14,11 @@ import (
 
 // Claims represents the JWT payload.
 type Claims struct {
-	UserID uint        `json:"user_id"`
-	Email  string      `json:"email"`
-	Role   models.Role `json:"role"`
+	UserID       uint        `json:"user_id"`
+	Email        string      `json:"email"`
+	Role         models.Role `json:"role"`
+	IsAdmin      bool        `json:"is_admin"`
+	IsSuperAdmin bool        `json:"is_super_admin"`
 	jwt.RegisteredClaims
 }
 
@@ -30,7 +32,6 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// Expect format: "Bearer <token>"
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header must be 'Bearer <token>'"})
@@ -51,7 +52,6 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// Verify user still exists and is active
 		var user models.User
 		if err := database.DB.First(&user, claims.UserID).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
@@ -65,7 +65,6 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		// Inject user info into context for downstream handlers
 		c.Set("userID", user.ID)
 		c.Set("userEmail", user.Email)
 		c.Set("userRole", user.Role)
@@ -74,19 +73,28 @@ func AuthRequired() gin.HandlerFunc {
 	}
 }
 
-// RoleRequired restricts access to users with specific roles.
+// GetUser returns the authenticated user from context.
+func GetUser(c *gin.Context) (models.User, bool) {
+	val, ok := c.Get("user")
+	if !ok {
+		return models.User{}, false
+	}
+	user, ok := val.(models.User)
+	return user, ok
+}
+
+// RoleRequired restricts access to users with specific base roles (legacy helper).
 func RoleRequired(roles ...models.Role) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userRole, exists := c.Get("userRole")
-		if !exists {
+		user, ok := GetUser(c)
+		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 			c.Abort()
 			return
 		}
 
-		role := userRole.(models.Role)
 		for _, allowedRole := range roles {
-			if role == allowedRole {
+			if user.Role == allowedRole {
 				c.Next()
 				return
 			}
@@ -94,5 +102,59 @@ func RoleRequired(roles ...models.Role) gin.HandlerFunc {
 
 		c.JSON(http.StatusForbidden, gin.H{"error": "Insufficient permissions"})
 		c.Abort()
+	}
+}
+
+// StaffRequired allows IT agents, managers, and legacy admins.
+func StaffRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, ok := GetUser(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.Abort()
+			return
+		}
+		if !user.IsStaffMember() {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Staff access required"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// FullAdminRequired allows manager+is_admin or super admin.
+func FullAdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, ok := GetUser(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.Abort()
+			return
+		}
+		if !user.IsFullAdmin() {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Full admin access required"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+// ManagerOrAdminRequired allows managers (any) or users with admin elevation.
+func ManagerOrAdminRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, ok := GetUser(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			c.Abort()
+			return
+		}
+		if user.Role != models.RoleManager && !user.HasAdminElevation() && user.Role != models.RoleAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Manager or admin access required"})
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
 }

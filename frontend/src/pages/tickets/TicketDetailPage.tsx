@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ticketAPI, commentAPI, adminAPI, attachmentAPI } from '../../services/api';
 import api from '../../services/api';
 import { itamAPI } from '../../services/itamAPI';
 import type { Ticket, Comment, User, Attachment } from '../../types';
 import type { AssetTicketLink, Asset } from '../../types/itam';
-import { ArrowLeft, Loader2, Send, Clock, User as UserIcon, Lock, AlertCircle, History, MessageSquare, Package, Search, X, Link as LinkIcon, Paperclip, Download } from 'lucide-react';
+import { Loader2, Send, Clock, User as UserIcon, Lock, AlertCircle, History, MessageSquare, Package, Search, X, Link as LinkIcon, Paperclip, Download } from 'lucide-react';
+import PageHeader from '../../components/PageHeader';
+import PageContainer from '../../components/PageContainer';
+import BackLink from '../../components/BackLink';
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -280,19 +283,23 @@ export default function TicketDetailPage() {
 
   if (error || !ticket) {
     return (
-      <div className="max-w-3xl mx-auto text-center py-20">
+      <PageContainer className="text-center py-20">
         <AlertCircle className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
         <p className="text-lg font-medium text-foreground">{error || 'Ticket not found'}</p>
-        <Link to="/tickets" className="text-sm text-primary hover:underline mt-2 inline-block">Back to tickets</Link>
-      </div>
+        <div className="mt-4 flex justify-center">
+          <BackLink to="/tickets" label="Back to Tickets" />
+        </div>
+      </PageContainer>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <Link to="/tickets" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6">
-        <ArrowLeft className="h-4 w-4" /> Back to tickets
-      </Link>
+    <PageContainer className="space-y-6">
+      <PageHeader
+        title={ticket.title}
+        backTo="/tickets"
+        backLabel="Tickets"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main content */}
@@ -306,8 +313,7 @@ export default function TicketDetailPage() {
               <span className="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full capitalize">{ticket.type.replace('_', ' ')}</span>
               <span className="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full capitalize">{ticket.category}</span>
             </div>
-            <h1 className="text-xl font-bold text-foreground">{ticket.title}</h1>
-            <p className="text-sm text-muted-foreground mt-4 whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
 
             <div className="mt-5 pt-4 border-t border-border">
               <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
@@ -739,6 +745,6 @@ export default function TicketDetailPage() {
           )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

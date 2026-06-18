@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
-  ArrowLeft,
   ClipboardCheck,
   FileDown,
   RefreshCw,
@@ -18,8 +16,13 @@ import {
   Zap,
   Pencil,
   Trash2,
+  MapPin,
+  Check,
+  Calendar,
 } from 'lucide-react';
 import { itamAPI } from '../../services/itamAPI';
+import PageContainer from '../../components/PageContainer';
+import PageHeader from '../../components/PageHeader';
 import type { Asset, Location, PMFinding, PMReport, PMSummary } from '../../types/itam';
 
 /* ─── helpers ───────────────────────────────────────────────────────────── */
@@ -84,7 +87,6 @@ const TILE_TYPES = [
 ];
 
 const EMPTY_FORM = {
-  device_label: '',
   asset_type_label: '',
   finding_type: 'health_check',
   severity: 'medium',
@@ -96,6 +98,17 @@ const EMPTY_FORM = {
   recommendation: '',
   replacement_required: false,
 };
+
+function mapAssetToDeviceTypeOption(asset: Asset, fallback = ''): string {
+  const raw = `${asset.type?.name ?? ''} ${asset.category?.name ?? ''} ${asset.name ?? ''}`.toLowerCase();
+  if (raw.includes('access point') || raw.includes('access_point') || /\bap\b/.test(raw)) return 'Access Point';
+  if (raw.includes('switch')) return 'Switch';
+  if (raw.includes('router')) return 'Router';
+  if (raw.includes('laptop')) return 'Laptop';
+  if (raw.includes('desktop') || /\bpc\b/.test(raw)) return 'PC / Desktop';
+  if (raw.trim() === '') return fallback;
+  return 'Other';
+}
 
 /* ─── Device type → form field mapping ────────────────────────────────── */
 function getRelevantFieldsForType(deviceType: string) {
@@ -135,6 +148,7 @@ export default function PMReportsPage() {
 
   /* finding form */
   const [findingForm, setFindingForm] = useState({ ...EMPTY_FORM });
+  const [pendingPhotos, setPendingPhotos] = useState<File[]>([]);
 
   /* report builder */
   const [selectedFindingIDs, setSelectedFindingIDs] = useState<number[]>([]);
@@ -153,14 +167,30 @@ export default function PMReportsPage() {
   /* ── derived ─────────────────────────────────────────────────────────── */
   const activeLocationID = useMemo(() => {
     if (locationFilter) return Number(locationFilter);
-    if (locations.length > 0) return locations[0].id;
     return 0;
-  }, [locationFilter, locations]);
+  }, [locationFilter]);
 
-  const selectedLocationName = useMemo(() => {
-    if (!activeLocationID) return 'No location';
-    return locations.find((l) => l.id === activeLocationID)?.name ?? 'Selected';
-  }, [activeLocationID, locations]);
+  const selectedLocation = useMemo(
+    () => locations.find((l) => l.id === activeLocationID) ?? null,
+    [activeLocationID, locations],
+  );
+
+  const hasLocationSelected = activeLocationID > 0;
+
+  const monthLabel = useMemo(() => {
+    const [year, month] = monthFilter.split('-');
+    if (!year || !month) return monthFilter;
+    const d = new Date(Number(year), Number(month) - 1, 1);
+    return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  }, [monthFilter]);
+
+  const requireLocation = () => {
+    if (!hasLocationSelected) {
+      window.alert('Please select an inspection location first.');
+      return false;
+    }
+    return true;
+  };
 
   const filteredFindings = useMemo(() => {
     const q = findingSearch.trim().toLowerCase();
@@ -240,6 +270,7 @@ export default function PMReportsPage() {
 
   /* ── modal helpers ───────────────────────────────────────────────────── */
   const openModalForTile = (_typeKey: string, typeLabel: string) => {
+    if (!requireLocation()) return;
     // tiles pre-fill asset category only — finding_type stays as user's choice
     setFindingForm({ ...EMPTY_FORM, asset_type_label: typeLabel });
     setEditingFinding(null);
@@ -250,6 +281,7 @@ export default function PMReportsPage() {
   };
 
   const openModalBlank = () => {
+    if (!requireLocation()) return;
     setFindingForm({ ...EMPTY_FORM });
     setEditingFinding(null);
     setSelectedAsset(null);
@@ -261,7 +293,6 @@ export default function PMReportsPage() {
   const openModalForEdit = (f: PMFinding) => {
     setEditingFinding(f);
     setFindingForm({
-      device_label: f.device_label ?? '',
       asset_type_label: f.asset_type_label ?? '',
       finding_type: f.finding_type ?? 'health_check',
       severity: f.severity ?? 'medium',
@@ -282,22 +313,43 @@ export default function PMReportsPage() {
   const closeModal = () => {
     setModalOpen(false);
     setEditingFinding(null);
+    setPendingPhotos([]);
+  };
+
+  const applySelectedAsset = (asset: Asset) => {
+    if (!asset.location_id) {
+      window.alert('Selected asset has no location. Please assign a location to the asset first.');
+      return;
+    }
+
+    setSelectedAsset(asset);
+    setAssetSearch(asset.name);
+    setAssetSearchResults([]);
+    setLocationFilter(String(asset.location_id));
+    // Blur active input so touch selection feels immediate on mobile.
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    setFindingForm((p) => ({
+      ...p,
+      asset_type_label: mapAssetToDeviceTypeOption(asset, p.asset_type_label),
+    }));
   };
 
   /* ── actions ─────────────────────────────────────────────────────────── */
   const submitFinding = async (): Promise<boolean> => {
-    if (!activeLocationID) { window.alert('Please select a location first.'); return false; }
+    if (!selectedAsset) { window.alert('Please link a device asset before saving.'); return false; }
+    if (!selectedAsset.location_id) { window.alert('Linked asset has no location.'); return false; }
     if (!findingForm.finding_type.trim()) { window.alert('Finding type is required.'); return false; }
     setSubmittingFinding(true);
     try {
       const payload = {
-        location_id: activeLocationID,
-        asset_id: selectedAsset?.id,
-        device_label: findingForm.device_label || selectedAsset?.name || '',
+        location_id: selectedAsset.location_id,
+        asset_id: selectedAsset.id,
         asset_type_label:
           findingForm.asset_type_label ||
-          selectedAsset?.type?.name ||
-          selectedAsset?.category?.name ||
+          selectedAsset.type?.name ||
+          selectedAsset.category?.name ||
           '',
         finding_type: findingForm.finding_type,
         severity: findingForm.severity,
@@ -316,9 +368,17 @@ export default function PMReportsPage() {
 
       if (editingFinding) {
         await itamAPI.updatePMFinding(editingFinding.id, payload);
+        if (pendingPhotos.length > 0) {
+          await itamAPI.uploadPMFindingPhotos(editingFinding.id, pendingPhotos);
+        }
       } else {
-        await itamAPI.createPMFinding(payload);
+        const res = await itamAPI.createPMFinding(payload);
+        const newId = res.data.finding.id;
+        if (pendingPhotos.length > 0) {
+          await itamAPI.uploadPMFindingPhotos(newId, pendingPhotos);
+        }
       }
+      setPendingPhotos([]);
       await loadData();
       return true;
     } catch (error) {
@@ -414,7 +474,7 @@ export default function PMReportsPage() {
   const renderFindingRow = (f: PMFinding) => {
     const selected = selectedFindingIDs.includes(f.id);
     const isDeleting = deletingFindingId === f.id;
-    const deviceLabel = f.device_label || f.asset?.name;
+    const deviceLabel = f.device_label || f.asset?.name || f.asset_type_label || 'Unlinked asset';
     return (
       <div
         key={f.id}
@@ -433,8 +493,8 @@ export default function PMReportsPage() {
         {/* content */}
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => toggleFinding(f.id)}>
           <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-            <span className={`text-sm font-medium truncate max-w-[160px] ${deviceLabel ? 'text-foreground' : 'text-muted-foreground italic'}`}>
-              {deviceLabel || '(No label)'}
+            <span className="text-sm font-medium truncate max-w-[160px] text-foreground">
+              {deviceLabel}
             </span>
             <span className="text-[11px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">
               {FINDING_TYPE_LABEL[f.finding_type] ?? f.finding_type}
@@ -514,7 +574,7 @@ export default function PMReportsPage() {
   const renderReportBuilder = () => (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-semibold text-foreground">Build Report</span>
+        <span className="text-sm font-semibold text-foreground">Build Inspection Report</span>
         {selectedFindingsCount > 0 && (
           <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
             {selectedFindingsCount} selected
@@ -559,12 +619,12 @@ export default function PMReportsPage() {
         className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium disabled:opacity-50 transition-colors"
       >
         <ClipboardCheck size={14} />
-        {buildingReport ? 'Generating…' : 'Generate Report'}
+        {buildingReport ? 'Generating…' : 'Generate Inspection Report'}
       </button>
 
       {reportList.length > 0 && (
         <div className="space-y-1.5 pt-1">
-          <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Past Reports</p>
+          <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Past Inspection Reports</p>
           {reportList.slice(0, 8).map(renderReportRow)}
         </div>
       )}
@@ -604,6 +664,61 @@ export default function PMReportsPage() {
 
             {/* body */}
             <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+              {/* Device Type (always visible, first field) */}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">
+                  Link Device Asset <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={assetSearch}
+                    onChange={(e) => {
+                      setAssetSearch(e.target.value);
+                      if (e.target.value.trim().length < 2) {
+                        setSelectedAsset(null);
+                      }
+                    }}
+                    placeholder="Search asset by name or tag"
+                    className="w-full pl-8 pr-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+                  />
+                </div>
+                {assetSearchResults.length > 0 && (
+                  <div className="mt-1 max-h-32 overflow-auto rounded-lg border border-border bg-background">
+                    {assetSearchResults.slice(0, 6).map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          applySelectedAsset(a);
+                        }}
+                        onTouchStart={(e) => {
+                          e.preventDefault();
+                          applySelectedAsset(a);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b border-border last:border-b-0"
+                      >
+                        {a.name}{' '}
+                        <span className="text-muted-foreground">({a.asset_tag})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedAsset ? (
+                  <>
+                    <p className="mt-1 text-[11px] text-emerald-300">
+                      Linked: {selectedAsset.name} ({selectedAsset.asset_tag || 'No tag'})
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-blue-300">
+                      Location auto-set to: {selectedAsset.location?.name || 'Selected asset location'}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 text-[11px] text-amber-300">Device asset is required.</p>
+                )}
+              </div>
+
               {/* Device Type (always visible, first field) */}
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">
@@ -718,91 +833,45 @@ export default function PMReportsPage() {
                 Broken asset — replacement required
               </label>
 
-              {/* optional / advanced */}
-              <details className="rounded-lg border border-border overflow-hidden">
-                <summary className="flex items-center justify-between px-3 py-2 cursor-pointer text-xs text-muted-foreground hover:text-foreground select-none list-none">
-                  <span>More details (optional)</span>
-                  <ChevronDown size={13} />
-                </summary>
-                <div className="px-3 pb-4 pt-3 space-y-3 bg-muted/5">
-                  {/* asset search */}
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Link Asset</label>
-                    <div className="relative">
-                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        value={assetSearch}
-                        onChange={(e) => setAssetSearch(e.target.value)}
-                        placeholder="Search by name or tag"
-                        className="w-full pl-8 pr-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
-                      />
-                    </div>
-                    {assetSearchResults.length > 0 && (
-                      <div className="mt-1 max-h-32 overflow-auto rounded-lg border border-border bg-background">
-                        {assetSearchResults.slice(0, 6).map((a) => (
-                          <button
-                            key={a.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedAsset(a);
-                              setAssetSearch(a.name);
-                              setAssetSearchResults([]);
-                              setFindingForm((p) => ({
-                                ...p,
-                                asset_type_label: a.type?.name ?? a.category?.name ?? '',
-                                device_label: p.device_label || a.name, // Auto-fill only if empty
-                              }));
-                            }}
-                            className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b border-border last:border-b-0"
-                          >
-                            {a.name}{' '}
-                            <span className="text-muted-foreground">({a.asset_tag})</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Status</label>
+                <select
+                  value={findingForm.status}
+                  onChange={(e) => setFindingForm((p) => ({ ...p, status: e.target.value }))}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+                >
+                  <option value="open">Open</option>
+                  <option value="monitor">Monitor</option>
+                  <option value="resolved">Resolved</option>
+                </select>
+              </div>
 
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">
-                      Device Label{' '}
-                      <span className="text-muted-foreground/60">(if not in asset list)</span>
-                    </label>
-                    <input
-                      value={findingForm.device_label}
-                      onChange={(e) => setFindingForm((p) => ({ ...p, device_label: e.target.value }))}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
-                    />
-                  </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Recommendation</label>
+                <textarea
+                  rows={2}
+                  value={findingForm.recommendation}
+                  onChange={(e) =>
+                    setFindingForm((p) => ({ ...p, recommendation: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground resize-none"
+                />
+              </div>
 
-
-
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Status</label>
-                    <select
-                      value={findingForm.status}
-                      onChange={(e) => setFindingForm((p) => ({ ...p, status: e.target.value }))}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
-                    >
-                      <option value="open">Open</option>
-                      <option value="monitor">Monitor</option>
-                      <option value="resolved">Resolved</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Recommendation</label>
-                    <textarea
-                      rows={2}
-                      value={findingForm.recommendation}
-                      onChange={(e) =>
-                        setFindingForm((p) => ({ ...p, recommendation: e.target.value }))
-                      }
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground resize-none"
-                    />
-                  </div>
-                </div>
-              </details>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Photos (optional, multiple)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  multiple
+                  onChange={(e) => setPendingPhotos(Array.from(e.target.files ?? []))}
+                  className="w-full text-xs text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-primary file:text-primary-foreground"
+                />
+                {pendingPhotos.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">{pendingPhotos.length} photo(s) selected</p>
+                )}
+              </div>
             </div>
 
             {/* sticky footer */}
@@ -828,72 +897,148 @@ export default function PMReportsPage() {
     );
   };
 
-  /* ══════════════════════════════════════════════════════════════════════
-     Page render
-  ══════════════════════════════════════════════════════════════════════ */
-  return (
-    <div className="flex flex-col h-full">
-
-      {/* ── Page header ────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 mb-4 shrink-0">
+  const renderLocationPicker = () => (
+    <div className="bg-card border border-border rounded-2xl p-5 space-y-4 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <Link
-            to="/itam"
-            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-1.5 transition-colors"
-          >
-            <ArrowLeft size={16} /> Back to ITAM Dashboard
-          </Link>
-          <h1 className="text-xl font-bold text-foreground">PM Site Inspection</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {selectedLocationName} · {monthFilter}
+          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-primary" />
+            Select inspection location
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Choose where you are walking through. Findings and reports are scoped to one location at a time.
           </p>
         </div>
-        <button
-          onClick={loadData}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-xs text-foreground hover:bg-muted shrink-0 transition-colors"
-        >
-          <RefreshCw size={13} /> Refresh
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <input
+            type="month"
+            value={monthFilter}
+            onChange={(e) => setMonthFilter(e.target.value)}
+            className="px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+          />
+        </div>
       </div>
-
-      {/* ── Stats row ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 shrink-0">
-        {[
-          { label: 'Reports',  value: summary?.total_reports ?? 0 },
-          { label: 'Findings', value: summary?.total_findings ?? summary?.total_failures ?? 0 },
-          { label: 'MTTR',     value: `${(summary?.mttr_hours ?? 0).toFixed(1)}h` },
-          { label: 'MTBF',     value: `${(summary?.mtbf_hours ?? 0).toFixed(1)}h` },
-        ].map((s) => (
-          <div key={s.label} className="bg-card border border-border rounded-xl px-4 py-3">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
-            <p className="text-xl font-bold text-foreground mt-0.5">{s.value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        {locations.map((loc) => {
+          const selected = locationFilter === String(loc.id);
+          return (
+            <button
+              key={loc.id}
+              type="button"
+              onClick={() => setLocationFilter(String(loc.id))}
+              className={`text-left rounded-xl border p-3 transition-colors ${
+                selected
+                  ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
+                  : 'border-border bg-background hover:bg-muted/40'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{loc.name}</p>
+                  {loc.address && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{loc.address}</p>
+                  )}
+                </div>
+                {selected && <Check className="h-4 w-4 text-primary shrink-0" />}
+              </div>
+            </button>
+          );
+        })}
       </div>
+      {locations.length === 0 && !loading && (
+        <p className="text-sm text-muted-foreground text-center py-4">No locations configured. Add locations in Settings.</p>
+      )}
+    </div>
+  );
 
-      {/* ── Filter bar ─────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 mb-4 shrink-0">
+  const renderInspectionContextBar = () => (
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 rounded-xl border border-primary/30 bg-primary/5">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="p-2 rounded-lg bg-primary/10 shrink-0">
+          <MapPin className="h-4 w-4 text-primary" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Inspecting</p>
+          <p className="text-sm font-semibold text-foreground truncate">
+            {selectedLocation?.name} · {monthLabel}
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="month"
           value={monthFilter}
           onChange={(e) => setMonthFilter(e.target.value)}
           className="px-3 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground"
         />
-        <select
-          value={locationFilter}
-          onChange={(e) => setLocationFilter(e.target.value)}
-          className="px-3 py-1.5 bg-background border border-border rounded-lg text-xs text-foreground"
+        <button
+          type="button"
+          onClick={() => setLocationFilter('')}
+          className="px-3 py-1.5 border border-border rounded-lg text-xs text-foreground hover:bg-muted transition-colors"
         >
-          <option value="">All Locations</option>
-          {locations.map((loc) => (
-            <option key={loc.id} value={loc.id}>{loc.name}</option>
-          ))}
-        </select>
-        <span className="text-xs text-muted-foreground hidden sm:inline">
-          Scope: <strong className="text-foreground">{selectedLocationName}</strong>
-        </span>
+          Change location
+        </button>
+        <button
+          onClick={loadData}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-xs text-foreground hover:bg-muted transition-colors"
+        >
+          <RefreshCw size={13} /> Refresh
+        </button>
       </div>
+    </div>
+  );
 
+  /* ══════════════════════════════════════════════════════════════════════
+     Page render
+  ══════════════════════════════════════════════════════════════════════ */
+  return (
+    <PageContainer className="flex flex-col">
+      <PageHeader
+        title="Site Inspection"
+        subtitle="Monthly location walk-through — record findings and generate reports."
+        backTo="/itam"
+        backLabel="Assets"
+        actions={
+          hasLocationSelected ? (
+            <button
+              onClick={loadData}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-sm text-foreground hover:bg-muted transition-colors"
+            >
+              <RefreshCw size={14} /> Refresh
+            </button>
+          ) : undefined
+        }
+      />
+
+      {!hasLocationSelected ? (
+        renderLocationPicker()
+      ) : (
+        <>
+          {renderInspectionContextBar()}
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 shrink-0">
+            {[
+              { label: 'Reports', value: summary?.total_reports ?? 0 },
+              { label: 'Findings', value: summary?.total_findings ?? summary?.total_failures ?? 0 },
+              { label: 'Urgent Issues', value: summary?.urgent_issues ?? 0 },
+              { label: 'Pending Follow-ups', value: summary?.pending_follow_ups ?? 0 },
+            ].map((s) => (
+              <div key={s.label} className="bg-card border border-border rounded-xl px-4 py-3">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
+                <p className="text-xl font-bold text-foreground mt-0.5">{s.value}</p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!hasLocationSelected ? (
+        <div className="rounded-xl border border-dashed border-border bg-muted/10 p-8 text-center text-sm text-muted-foreground">
+          Select a location above to start recording findings for this month.
+        </div>
+      ) : (
+      <>
       {/* ══════════════════════════════════════════════════════════════════
           DESKTOP — two-column layout (md+)
       ══════════════════════════════════════════════════════════════════ */}
@@ -957,8 +1102,8 @@ export default function PMReportsPage() {
 
           {/* legend */}
           <div className="px-3 py-2.5 rounded-xl border border-border bg-muted/10 text-[11px] text-muted-foreground space-y-0.5 shrink-0">
-            <p><strong className="text-foreground">MTTR</strong> — avg time to resolve findings</p>
-            <p><strong className="text-foreground">MTBF</strong> — avg time between failures</p>
+            <p><strong className="text-foreground">Urgent Issues</strong> — findings with high or critical severity</p>
+            <p><strong className="text-foreground">Pending Follow-ups</strong> — findings not yet resolved</p>
           </div>
         </div>
       </div>
@@ -1072,8 +1217,11 @@ export default function PMReportsPage() {
         </div>
       </div>
 
+      </>
+      )}
+
       {/* ── Modal ──────────────────────────────────────────────────────── */}
       {renderModal()}
-    </div>
+    </PageContainer>
   );
 }

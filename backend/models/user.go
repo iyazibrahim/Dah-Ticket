@@ -11,7 +11,8 @@ type Role string
 const (
 	RoleEmployee Role = "employee"
 	RoleITAgent  Role = "it_agent"
-	RoleAdmin    Role = "admin"
+	RoleManager  Role = "manager"
+	RoleAdmin    Role = "admin" // legacy — migrated to manager+is_admin on startup
 )
 
 type User struct {
@@ -19,11 +20,12 @@ type User struct {
 	FirstName string         `gorm:"size:100;not null" json:"first_name"`
 	LastName  string         `gorm:"size:100;not null" json:"last_name"`
 	Email     string         `gorm:"size:255;not null;uniqueIndex" json:"email"`
-	Password  string         `gorm:"not null" json:"-"` // Don't expose password in JSON
+	Password  string         `gorm:"not null" json:"-"`
 	Role      Role           `gorm:"type:varchar(20);default:'employee'" json:"role"`
+	IsAdmin   bool           `gorm:"default:false" json:"is_admin"`
+	IsSuperAdmin bool        `gorm:"default:false" json:"is_super_admin"`
 	IsActive  bool           `gorm:"default:true" json:"is_active"`
-	
-	// Relationships
+
 	CreatedTickets  []Ticket `gorm:"foreignKey:RequesterID" json:"created_tickets,omitempty"`
 	AssignedTickets []Ticket `gorm:"foreignKey:AssigneeID" json:"assigned_tickets,omitempty"`
 

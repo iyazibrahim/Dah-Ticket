@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
 import type { User } from '../../types';
 import { Loader2, Search, Plus, Shield, ShieldCheck, UserIcon, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import PageContainer from '../../components/PageContainer';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -57,16 +58,28 @@ export default function UsersPage() {
     }
   };
 
-  const roleIcons: Record<string, typeof Shield> = { admin: ShieldCheck, it_agent: Shield, employee: UserIcon };
+  const roleIcons: Record<string, typeof Shield> = { admin: ShieldCheck, it_agent: Shield, manager: Shield, employee: UserIcon };
   const roleColors: Record<string, string> = {
     admin: 'text-purple-600 bg-purple-50 dark:bg-purple-950/30 dark:text-purple-400',
+    manager: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30 dark:text-indigo-400',
     it_agent: 'text-blue-600 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400',
     employee: 'text-gray-600 bg-gray-50 dark:bg-gray-950/30 dark:text-gray-400',
   };
-  const roleLabels: Record<string, string> = { admin: 'Admin', it_agent: 'IT Agent', employee: 'Employee' };
+  const roleLabels: Record<string, string> = { admin: 'Admin', manager: 'Manager', it_agent: 'IT Agent', employee: 'Employee' };
+
+  const handleToggleAdmin = async (user: User) => {
+    try {
+      await api.put(`/admin/users/${user.id}`, { is_admin: !user.is_admin });
+      showFeedback('success', `${user.first_name} admin elevation ${user.is_admin ? 'removed' : 'granted'}`);
+      fetchUsers();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      showFeedback('error', axiosErr.response?.data?.error || 'Failed to update admin status');
+    }
+  };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <PageContainer className="space-y-5">
       {/* Feedback toast */}
       {feedback && (
         <div className={`flex items-center gap-2 p-4 rounded-xl text-sm font-medium ${feedback.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800/50' : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800/50'}`}>
@@ -99,6 +112,7 @@ export default function UsersPage() {
           className="px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
           <option value="">All roles</option>
           <option value="admin">Admins</option>
+          <option value="manager">Managers</option>
           <option value="it_agent">IT Agents</option>
           <option value="employee">Employees</option>
         </select>
@@ -135,18 +149,18 @@ export default function UsersPage() {
                             {u.first_name[0]}{u.last_name[0]}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-medium text-foreground truncate">{u.first_name} {u.last_name}</p>
+                            <p className="font-medium text-foreground truncate">{u.first_name} {u.last_name}{u.is_super_admin ? ' · Super Admin' : u.is_admin ? ' · Admin' : ''}</p>
                             <p className="text-xs text-muted-foreground sm:hidden truncate">{u.email}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-muted-foreground hidden sm:table-cell">{u.email}</td>
                       <td className="px-5 py-4">
-                        <select value={u.role} onChange={(e) => handleRoleChange(u, e.target.value)}
-                          className="text-xs font-medium px-2 py-1 rounded-lg border-none focus:ring-2 focus:ring-primary/20 cursor-pointer bg-transparent">
+                        <select value={u.role} onChange={(e) => handleRoleChange(u, e.target.value)} disabled={u.is_super_admin}
+                          className="text-xs font-medium px-2 py-1 rounded-lg border border-border focus:ring-2 focus:ring-primary/20 cursor-pointer bg-card disabled:opacity-60">
                           <option value="employee">Employee</option>
                           <option value="it_agent">IT Agent</option>
-                          <option value="admin">Admin</option>
+                          <option value="manager">Manager</option>
                         </select>
                         <span className={`ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[u.role]}`}>
                           <RoleIcon className="h-3 w-3" /> {roleLabels[u.role]}
@@ -157,7 +171,13 @@ export default function UsersPage() {
                           {u.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-right">
+                      <td className="px-5 py-4 text-right space-x-2">
+                        {!u.is_super_admin && (
+                          <button onClick={() => handleToggleAdmin(u)}
+                            className="text-xs font-medium px-2 py-1.5 rounded-lg border border-border hover:bg-muted">
+                            {u.is_admin ? 'Revoke Admin' : 'Grant Admin'}
+                          </button>
+                        )}
                         <button onClick={() => handleToggleActive(u)}
                           className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${u.is_active ? 'text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30' : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'}`}>
                           {u.is_active ? 'Deactivate' : 'Activate'}
@@ -179,13 +199,13 @@ export default function UsersPage() {
           onSuccess={() => { setShowCreateModal(false); fetchUsers(); showFeedback('success', 'User created'); }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
 // --- Create User Modal ---
 function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', password: '', role: 'employee' });
+  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', password: '', role: 'employee', is_admin: false });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -248,9 +268,13 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
               className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
               <option value="employee">Employee</option>
               <option value="it_agent">IT Agent</option>
-              <option value="admin">Admin</option>
+              <option value="manager">Manager</option>
             </select>
           </div>
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input type="checkbox" checked={form.is_admin} onChange={(e) => setForm((f) => ({ ...f, is_admin: e.target.checked }))} />
+            Grant admin elevation
+          </label>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted">Cancel</button>
             <button type="submit" disabled={isSubmitting}

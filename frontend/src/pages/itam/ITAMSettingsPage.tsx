@@ -16,6 +16,8 @@ import {
   Layers,
 } from 'lucide-react';
 import { itamAPI } from '../../services/itamAPI';
+import { usePermissions } from '../../hooks/usePermissions';
+import PageContainer from '../../components/PageContainer';
 import type {
   AssetCategory,
   AssetCondition,
@@ -25,7 +27,6 @@ import type {
   Location,
   Vendor,
 } from '../../types/itam';
-import { useAuth } from '../../contexts/AuthContext';
 
 type SectionTab = 'configuration' | 'reference';
 type RefKey = 'categories' | 'types' | 'statuses' | 'conditions' | 'locations' | 'vendors';
@@ -74,8 +75,6 @@ function buildFormFromEditor(editor: EditorState): RefFormState {
 }
 
 export default function ITAMSettingsPage() {
-  const { user } = useAuth();
-
   const [sectionTab, setSectionTab] = useState<SectionTab>('configuration');
   const [activeTab, setActiveTab] = useState<RefKey>('categories');
   const [loading, setLoading] = useState(true);
@@ -96,6 +95,14 @@ export default function ITAMSettingsPage() {
     auto_generate_tag: true,
     organization_name: '',
     logo_base64: '',
+    support_email: '',
+    timezone: 'Asia/Kuala_Lumpur',
+    email_sender_name: '',
+    notify_ticket_created: true,
+    notify_ticket_assigned: true,
+    notify_ticket_status: true,
+    notify_new_comment: true,
+    kb_max_upload_mb: 5,
   });
   const [slaForm, setSlaForm] = useState({
     sla_low_hours: 72,
@@ -111,7 +118,8 @@ export default function ITAMSettingsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  const isAdmin = user?.role === 'admin';
+  const perms = usePermissions();
+  const isAdmin = perms.isFullAdmin;
 
   const tabs: Array<{ key: RefKey; label: string; count: number }> = useMemo(
     () => [
@@ -201,6 +209,14 @@ export default function ITAMSettingsPage() {
         auto_generate_tag: loadedSettings.auto_generate_tag,
         organization_name: loadedSettings.organization_name ?? '',
         logo_base64: loadedSettings.logo_base64 ?? '',
+        support_email: loadedSettings.support_email ?? '',
+        timezone: loadedSettings.timezone ?? 'Asia/Kuala_Lumpur',
+        email_sender_name: loadedSettings.email_sender_name ?? '',
+        notify_ticket_created: loadedSettings.notify_ticket_created ?? true,
+        notify_ticket_assigned: loadedSettings.notify_ticket_assigned ?? true,
+        notify_ticket_status: loadedSettings.notify_ticket_status ?? true,
+        notify_new_comment: loadedSettings.notify_new_comment ?? true,
+        kb_max_upload_mb: loadedSettings.kb_max_upload_mb ?? 5,
       });
       setSlaForm({
         sla_low_hours: loadedSettings.sla_low_hours,
@@ -261,9 +277,17 @@ export default function ITAMSettingsPage() {
       const res = await itamAPI.updateSettings({
         organization_name: settingsForm.organization_name,
         logo_base64: settingsForm.logo_base64,
+        support_email: settingsForm.support_email,
+        timezone: settingsForm.timezone,
+        email_sender_name: settingsForm.email_sender_name,
+        notify_ticket_created: settingsForm.notify_ticket_created,
+        notify_ticket_assigned: settingsForm.notify_ticket_assigned,
+        notify_ticket_status: settingsForm.notify_ticket_status,
+        notify_new_comment: settingsForm.notify_new_comment,
+        kb_max_upload_mb: settingsForm.kb_max_upload_mb,
       });
       setSettings(res.data.settings);
-      showSuccess('Organisation settings updated.');
+      showSuccess('System settings updated.');
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { error?: string } } };
       setError(apiErr.response?.data?.error || 'Failed to update organisation settings.');
@@ -450,7 +474,7 @@ export default function ITAMSettingsPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <PageContainer className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -599,7 +623,7 @@ export default function ITAMSettingsPage() {
               <Settings2 size={16} className="text-purple-400" /> Organisation &amp; Branding
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Organisation name and logo appear in exported PM Report PDFs.
+              Organisation name and logo appear in exported site inspection report PDFs.
             </p>
             <div className="space-y-3 mt-3">
               <div>
@@ -608,6 +632,23 @@ export default function ITAMSettingsPage() {
                   value={settingsForm.organization_name}
                   onChange={(e) => setSettingsForm((prev) => ({ ...prev, organization_name: e.target.value }))}
                   placeholder="e.g. Digital Penang"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Support Email</label>
+                <input
+                  value={settingsForm.support_email}
+                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, support_email: e.target.value }))}
+                  placeholder="support@company.com"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Timezone</label>
+                <input
+                  value={settingsForm.timezone}
+                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, timezone: e.target.value }))}
                   className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm"
                 />
               </div>
@@ -650,13 +691,55 @@ export default function ITAMSettingsPage() {
                 <p className="text-[11px] text-muted-foreground mt-1">Recommended: PNG/SVG, max ~300 KB</p>
               </div>
             </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-5">
+            <h3 className="font-semibold text-foreground">Notifications & Knowledge Base</h3>
+            <p className="text-sm text-muted-foreground mt-1">Control email notification types and KB upload limits.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-sm">
+              {([
+                ['notify_ticket_created', 'Ticket created'],
+                ['notify_ticket_assigned', 'Ticket assigned'],
+                ['notify_ticket_status', 'Status changes'],
+                ['notify_new_comment', 'New comments'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={settingsForm[key]}
+                    onChange={(e) => setSettingsForm((prev) => ({ ...prev, [key]: e.target.checked }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Email sender display name</label>
+                <input
+                  value={settingsForm.email_sender_name}
+                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, email_sender_name: e.target.value }))}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">KB max upload (MB)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={settingsForm.kb_max_upload_mb}
+                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, kb_max_upload_mb: Number(e.target.value) }))}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm"
+                />
+              </div>
+            </div>
             <div className="mt-4 flex justify-end">
               <button
                 onClick={saveOrgSettings}
                 disabled={saving}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm disabled:opacity-50"
               >
-                <Save size={14} /> Save Organisation Settings
+                <Save size={14} /> Save System Settings
               </button>
             </div>
           </div>
@@ -967,6 +1050,6 @@ export default function ITAMSettingsPage() {
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

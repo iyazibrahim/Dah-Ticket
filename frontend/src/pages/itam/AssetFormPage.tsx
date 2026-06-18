@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Save, Package, AlertCircle } from 'lucide-react';
+import { Save, AlertCircle } from 'lucide-react';
+import PageHeader from '../../components/PageHeader';
+import PageContainer from '../../components/PageContainer';
 import { itamAPI } from '../../services/itamAPI';
 import type {
   Asset, AssetCategory, AssetType, AssetStatus,
@@ -218,37 +220,12 @@ export default function AssetFormPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link
-          to={isEdit ? `/itam/assets/${id}` : '/itam/assets'}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft size={16} />
-          {isEdit ? 'Back to Asset' : 'Back to Assets'}
-        </Link>
-        <Link
-          to="/itam"
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Go to ITAM Dashboard
-        </Link>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-border flex items-center justify-center">
-          <Package size={20} className="text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">
-            {isEdit ? 'Edit Asset' : 'Add New Asset'}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {isEdit ? 'Update asset information' : 'Register a new asset in the inventory'}
-          </p>
-        </div>
-      </div>
+    <PageContainer className="space-y-6 max-w-3xl">
+      <PageHeader
+        title={isEdit ? 'Edit Asset' : 'Add Asset'}
+        backTo={isEdit ? `/itam/assets/${id}` : '/itam'}
+        backLabel={isEdit ? 'Back to Asset' : 'Assets'}
+      />
 
       {error && (
         <div className="flex items-center gap-2 p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-sm">
@@ -465,7 +442,7 @@ export default function AssetFormPage() {
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 pb-4">
           <Link
-            to={isEdit ? `/itam/assets/${id}` : '/itam/assets'}
+            to={isEdit ? `/itam/assets/${id}` : '/itam'}
             className="px-5 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors"
           >
             Cancel
@@ -484,7 +461,7 @@ export default function AssetFormPage() {
           </button>
         </div>
       </form>
-    </div>
+    </PageContainer>
   );
 }
 
