@@ -64,13 +64,13 @@ export default function LoginPage() {
           </p>
           <div className="mt-12 grid grid-cols-3 gap-6">
             {[
-              { label: 'Tickets Resolved', value: '2.4K+' },
-              { label: 'Avg Response', value: '< 2hr' },
-              { label: 'Satisfaction', value: '98%' },
-            ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <div className="text-xs text-blue-200/70 mt-1">{stat.label}</div>
+              { title: 'Digital Penang', subtitle: "Empowering Penang's digital workforce" },
+              { title: 'Smarter Support', subtitle: 'One place for IT requests & assets' },
+              { title: 'Built for Teams', subtitle: 'Internal helpdesk by Agile Solutions' },
+            ].map((pillar) => (
+              <div key={pillar.title} className="text-center">
+                <div className="text-lg font-bold leading-snug">{pillar.title}</div>
+                <div className="text-xs text-blue-200/70 mt-2 leading-relaxed">{pillar.subtitle}</div>
               </div>
             ))}
           </div>
