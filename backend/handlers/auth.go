@@ -41,15 +41,16 @@ type AuthResponse struct {
 }
 
 type UserResponse struct {
-	ID           uint        `json:"id"`
-	FirstName    string      `json:"first_name"`
-	LastName     string      `json:"last_name"`
-	Email        string      `json:"email"`
-	Role         models.Role `json:"role"`
-	IsAdmin      bool        `json:"is_admin"`
-	IsSuperAdmin bool        `json:"is_super_admin"`
-	IsActive     bool        `json:"is_active"`
-	CreatedAt    time.Time   `json:"created_at"`
+	ID                uint        `json:"id"`
+	FirstName         string      `json:"first_name"`
+	LastName          string      `json:"last_name"`
+	Email             string      `json:"email"`
+	Role              models.Role `json:"role"`
+	IsAdmin           bool        `json:"is_admin"`
+	IsSuperAdmin      bool        `json:"is_super_admin"`
+	IsActive          bool        `json:"is_active"`
+	PrimaryLocationID *uint       `json:"primary_location_id,omitempty"`
+	CreatedAt         time.Time   `json:"created_at"`
 }
 
 // --- Handlers ---
@@ -228,14 +229,15 @@ func generateToken(user models.User) (string, error) {
 
 func toUserResponse(user models.User) UserResponse {
 	return UserResponse{
-		ID:           user.ID,
-		FirstName:    user.FirstName,
-		LastName:     user.LastName,
-		Email:        user.Email,
-		Role:         user.Role,
-		IsAdmin:      user.IsAdmin,
-		IsSuperAdmin: user.IsSuperAdmin,
-		IsActive:     user.IsActive,
-		CreatedAt:    user.CreatedAt,
+		ID:                user.ID,
+		FirstName:         user.FirstName,
+		LastName:          user.LastName,
+		Email:             user.Email,
+		Role:              user.Role,
+		IsAdmin:           user.IsAdmin,
+		IsSuperAdmin:      user.IsSuperAdmin,
+		IsActive:          user.IsActive,
+		PrimaryLocationID: user.PrimaryLocationID,
+		CreatedAt:         user.CreatedAt,
 	}
 }

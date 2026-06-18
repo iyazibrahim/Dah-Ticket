@@ -40,8 +40,8 @@ export interface AssetListParams {
 
 export const itamAPI = {
   // Stats
-  getStats: (): Promise<{ data: ITAMStats }> =>
-    api.get('/itam/stats'),
+  getStats: (params?: { location_id?: number }): Promise<{ data: ITAMStats }> =>
+    api.get('/itam/stats', { params }),
 
   // Assets
   listAssets: (params?: AssetListParams): Promise<{ data: PaginatedAssetsResponse }> =>
@@ -68,8 +68,8 @@ export const itamAPI = {
   deleteAsset: (id: number): Promise<{ data: { message: string } }> =>
     api.delete(`/itam/assets/${id}`),
 
-  searchAssets: (q: string): Promise<{ data: { assets: Asset[] } }> =>
-    api.get('/itam/assets/search', { params: { q } }),
+  searchAssets: (q: string, params?: { location_id?: number }): Promise<{ data: { assets: Asset[] } }> =>
+    api.get('/itam/assets/search', { params: { q, ...params } }),
 
   // Reference data
   getCategories: (): Promise<{ data: AssetCategory[] }> =>

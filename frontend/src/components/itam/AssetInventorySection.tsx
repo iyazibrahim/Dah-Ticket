@@ -84,9 +84,10 @@ function formatDisplayAssetTag(asset: Pick<Asset, 'asset_tag' | 'location'>) {
 
 interface AssetInventorySectionProps {
   variant?: 'standalone' | 'embedded';
+  forcedLocationId?: number;
 }
 
-export default function AssetInventorySection({ variant = 'standalone' }: AssetInventorySectionProps) {
+export default function AssetInventorySection({ variant = 'standalone', forcedLocationId }: AssetInventorySectionProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { isStaff, isFullAdmin, isDelegatedAdmin, hasAdminElevation } = usePermissions();
   const isAdmin = isFullAdmin || isDelegatedAdmin || hasAdminElevation;
@@ -108,6 +109,7 @@ export default function AssetInventorySection({ variant = 'standalone' }: AssetI
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category_id') ?? '');
   const [typeFilter, setTypeFilter] = useState(searchParams.get('type_id') ?? '');
   const [locationFilter, setLocationFilter] = useState(searchParams.get('location_id') ?? '');
+  const effectiveLocationFilter = forcedLocationId != null ? String(forcedLocationId) : locationFilter;
   const [assignedFilter, setAssignedFilter] = useState(
     searchParams.get('unassigned') === '1' ? 'unassigned' : (searchParams.get('assigned_user_id') ?? ''),
   );
@@ -149,7 +151,7 @@ export default function AssetInventorySection({ variant = 'standalone' }: AssetI
         status_id: statusFilter || undefined,
         category_id: categoryFilter || undefined,
         type_id: typeFilter || undefined,
-        location_id: locationFilter || undefined,
+        location_id: effectiveLocationFilter || undefined,
         assigned_user_id: assignedFilter || undefined,
         warranty_expiring_days: warrantyDays ? Number(warrantyDays) : undefined,
       });
@@ -159,7 +161,7 @@ export default function AssetInventorySection({ variant = 'standalone' }: AssetI
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, statusFilter, categoryFilter, typeFilter, locationFilter, assignedFilter, warrantyDays]);
+  }, [page, pageSize, search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter, assignedFilter, warrantyDays]);
 
   useEffect(() => {
     fetchAssets();
@@ -168,13 +170,13 @@ export default function AssetInventorySection({ variant = 'standalone' }: AssetI
     if (statusFilter) params.status_id = statusFilter;
     if (categoryFilter) params.category_id = categoryFilter;
     if (typeFilter) params.type_id = typeFilter;
-    if (locationFilter) params.location_id = locationFilter;
+    if (effectiveLocationFilter) params.location_id = effectiveLocationFilter;
     if (assignedFilter) params.assigned_user_id = assignedFilter;
     if (warrantyDays) params.warranty_expiring_days = warrantyDays;
     if (page > 1) params.page = String(page);
     if (pageSize !== 15) params.per_page = String(pageSize);
     setSearchParams(params);
-  }, [fetchAssets, search, statusFilter, categoryFilter, typeFilter, locationFilter, assignedFilter, warrantyDays, page, pageSize, setSearchParams]);
+  }, [fetchAssets, search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter, assignedFilter, warrantyDays, page, pageSize, setSearchParams]);
 
   const handleDelete = async (id: number) => {
     setDeleting(true);
@@ -199,11 +201,11 @@ export default function AssetInventorySection({ variant = 'standalone' }: AssetI
 
   const handleExport = async (format: 'csv' | 'xlsx' | 'pdf', scope: 'filtered' | 'all' = 'filtered') => {
     const params = {
-      ...(scope === 'filtered' && locationFilter ? { location_id: locationFilter } : {}),
+      ...(scope === 'filtered' && effectiveLocationFilter ? { location_id: effectiveLocationFilter } : {}),
       format,
     };
     const selectedLocation = scope === 'filtered'
-      ? locations.find((loc) => String(loc.id) === String(locationFilter))
+      ? locations.find((loc) => String(loc.id) === String(effectiveLocationFilter))
       : undefined;
     const extension = format;
     const fileName = selectedLocation
@@ -327,7 +329,7 @@ export default function AssetInventorySection({ variant = 'standalone' }: AssetI
     setPage(1);
   };
 
-  const hasActiveFilters = search || statusFilter || categoryFilter || typeFilter || locationFilter || assignedFilter || warrantyDays;
+  const hasActiveFilters = search || statusFilter || categoryFilter || typeFilter || effectiveLocationFilter || assignedFilter || warrantyDays;
   const visiblePages = (() => {
     const windowSize = 5;
     const start = Math.max(1, page - Math.floor(windowSize / 2));
@@ -486,10 +488,12 @@ export default function AssetInventorySection({ variant = 'standalone' }: AssetI
               <option value="">All Types</option>
               {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
+            {!forcedLocationId && (
             <select value={locationFilter} onChange={(e) => { setLocationFilter(e.target.value); setPage(1); }} className="px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-blue-500">
               <option value="">All Locations</option>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
+            )}
             <select value={assignedFilter} onChange={(e) => { setAssignedFilter(e.target.value); setPage(1); }} className="px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-blue-500">
               <option value="">All Assignment</option>
               <option value="unassigned">Unassigned</option>

@@ -44,7 +44,7 @@ type PMChecklistInput struct {
 
 type PMFindingInput struct {
 	LocationID          uint       `json:"location_id" binding:"required"`
-	AssetID             *uint      `json:"asset_id" binding:"required"`
+	AssetID             *uint      `json:"asset_id"`
 	DeviceLabel         string     `json:"device_label"`
 	AssetTypeLabel      string     `json:"asset_type_label"`
 	FindingType         string     `json:"finding_type" binding:"required"`
@@ -155,8 +155,14 @@ func getFindingAssetSnapshot(assetID uint) (models.Asset, string, error) {
 func ListPMFindings(c *gin.Context) {
 	query := database.DB.Model(&models.PMFinding{})
 
+	scopedLocationID, ok := EnforceLocationQuery(c)
+	if !ok {
+		return
+	}
 	if locationID := c.Query("location_id"); locationID != "" {
 		query = query.Where("location_id = ?", locationID)
+	} else if scopedLocationID != "" {
+		query = query.Where("location_id = ?", scopedLocationID)
 	}
 	if status := c.Query("status"); status != "" {
 		query = query.Where("status = ?", strings.ToLower(status))
@@ -192,18 +198,7 @@ func CreatePMFinding(c *gin.Context) {
 		return
 	}
 
-	if req.AssetID == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "asset_id is required"})
-		return
-	}
-
-	asset, assetTypeLabel, err := getFindingAssetSnapshot(*req.AssetID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if asset.LocationID == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "linked asset must have a location"})
+	if !EnforceLocationWrite(c, req.LocationID) {
 		return
 	}
 
@@ -214,10 +209,6 @@ func CreatePMFinding(c *gin.Context) {
 
 	userID := c.MustGet("userID").(uint)
 	finding := models.PMFinding{
-		LocationID:          *asset.LocationID,
-		AssetID:             req.AssetID,
-		DeviceLabel:         strings.TrimSpace(asset.Name),
-		AssetTypeLabel:      assetTypeLabel,
 		FindingType:         strings.TrimSpace(req.FindingType),
 		Severity:            normalizeValue(req.Severity, "medium"),
 		Status:              normalizeValue(req.Status, "open"),
@@ -236,6 +227,40 @@ func CreatePMFinding(c *gin.Context) {
 	if finding.FindingType == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "finding_type is required"})
 		return
+	}
+
+	if req.AssetID != nil {
+		asset, assetTypeLabel, err := getFindingAssetSnapshot(*req.AssetID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if asset.LocationID == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "linked asset must have a location"})
+			return
+		}
+		if !EnforceLocationWrite(c, *asset.LocationID) {
+			return
+		}
+		finding.LocationID = *asset.LocationID
+		finding.AssetID = req.AssetID
+		finding.DeviceLabel = strings.TrimSpace(asset.Name)
+		finding.AssetTypeLabel = assetTypeLabel
+		if label := strings.TrimSpace(req.AssetTypeLabel); label != "" {
+			finding.AssetTypeLabel = label
+		}
+	} else {
+		deviceLabel := strings.TrimSpace(req.DeviceLabel)
+		if deviceLabel == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "device_label is required when asset is not linked"})
+			return
+		}
+		finding.LocationID = req.LocationID
+		finding.DeviceLabel = deviceLabel
+		finding.AssetTypeLabel = strings.TrimSpace(req.AssetTypeLabel)
+		if finding.AssetTypeLabel == "" {
+			finding.AssetTypeLabel = "General"
+		}
 	}
 
 	if err := database.DB.Create(&finding).Error; err != nil {
@@ -267,26 +292,49 @@ func UpdatePMFinding(c *gin.Context) {
 		return
 	}
 
-	if req.AssetID != nil {
-		finding.AssetID = *req.AssetID
-	}
-	if finding.AssetID == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "asset_id is required"})
+	if !EnforceLocationWrite(c, finding.LocationID) {
 		return
 	}
 
-	asset, assetTypeLabel, err := getFindingAssetSnapshot(*finding.AssetID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	if req.AssetID != nil {
+		finding.AssetID = *req.AssetID
 	}
-	if asset.LocationID == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "linked asset must have a location"})
-		return
+
+	if finding.AssetID != nil {
+		asset, assetTypeLabel, err := getFindingAssetSnapshot(*finding.AssetID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if asset.LocationID == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "linked asset must have a location"})
+			return
+		}
+		if !EnforceLocationWrite(c, *asset.LocationID) {
+			return
+		}
+		finding.LocationID = *asset.LocationID
+		finding.DeviceLabel = strings.TrimSpace(asset.Name)
+		finding.AssetTypeLabel = assetTypeLabel
+		if req.AssetTypeLabel != nil && strings.TrimSpace(*req.AssetTypeLabel) != "" {
+			finding.AssetTypeLabel = strings.TrimSpace(*req.AssetTypeLabel)
+		}
+	} else {
+		if req.DeviceLabel != nil {
+			label := strings.TrimSpace(*req.DeviceLabel)
+			if label == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "device_label is required when asset is not linked"})
+				return
+			}
+			finding.DeviceLabel = label
+		} else if strings.TrimSpace(finding.DeviceLabel) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "device_label is required when asset is not linked"})
+			return
+		}
+		if req.AssetTypeLabel != nil {
+			finding.AssetTypeLabel = strings.TrimSpace(*req.AssetTypeLabel)
+		}
 	}
-	finding.LocationID = *asset.LocationID
-	finding.DeviceLabel = strings.TrimSpace(asset.Name)
-	finding.AssetTypeLabel = assetTypeLabel
 	if req.FindingType != nil {
 		finding.FindingType = strings.TrimSpace(*req.FindingType)
 	}
@@ -346,6 +394,10 @@ func DeletePMFinding(c *gin.Context) {
 		return
 	}
 
+	if !EnforceLocationWrite(c, finding.LocationID) {
+		return
+	}
+
 	oldJSON := ToJSON(finding)
 	if err := database.DB.Delete(&finding).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete PM finding"})
@@ -358,8 +410,15 @@ func DeletePMFinding(c *gin.Context) {
 
 func ListPMReports(c *gin.Context) {
 	query := database.DB.Model(&models.PMReport{})
+
+	scopedLocationID, ok := EnforceLocationQuery(c)
+	if !ok {
+		return
+	}
 	if locationID := c.Query("location_id"); locationID != "" {
 		query = query.Where("location_id = ?", locationID)
+	} else if scopedLocationID != "" {
+		query = query.Where("location_id = ?", scopedLocationID)
 	}
 	if month := c.Query("month"); month != "" {
 		query = query.Where("month = ?", month)
@@ -390,6 +449,10 @@ func GetPMReport(c *gin.Context) {
 		Preload("Findings.Asset").
 		First(&report, uint(id)).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "PM report not found"})
+		return
+	}
+
+	if !EnforceLocationWrite(c, report.LocationID) {
 		return
 	}
 
@@ -465,6 +528,10 @@ func BuildPMReportFromFindings(c *gin.Context) {
 	}
 	if len(req.FindingIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "at least one finding_id is required"})
+		return
+	}
+
+	if !EnforceLocationWrite(c, req.LocationID) {
 		return
 	}
 
@@ -619,9 +686,16 @@ func GetPMSummary(c *gin.Context) {
 	reportQuery := database.DB.Model(&models.PMReport{})
 	findingQuery := database.DB.Model(&models.PMFinding{})
 
+	scopedLocationID, ok := EnforceLocationQuery(c)
+	if !ok {
+		return
+	}
 	if locationID := c.Query("location_id"); locationID != "" {
 		reportQuery = reportQuery.Where("location_id = ?", locationID)
 		findingQuery = findingQuery.Where("location_id = ?", locationID)
+	} else if scopedLocationID != "" {
+		reportQuery = reportQuery.Where("location_id = ?", scopedLocationID)
+		findingQuery = findingQuery.Where("location_id = ?", scopedLocationID)
 	}
 	if month := c.Query("month"); month != "" {
 		reportQuery = reportQuery.Where("month = ?", month)

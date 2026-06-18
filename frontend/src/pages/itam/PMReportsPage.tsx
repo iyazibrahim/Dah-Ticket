@@ -21,6 +21,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { itamAPI } from '../../services/itamAPI';
+import { useLocationScope } from '../../hooks/useLocationScope';
 import PageContainer from '../../components/PageContainer';
 import PageHeader from '../../components/PageHeader';
 import type { Asset, Location, PMFinding, PMReport, PMSummary } from '../../types/itam';
@@ -87,6 +88,7 @@ const TILE_TYPES = [
 ];
 
 const EMPTY_FORM = {
+  device_title: '',
   asset_type_label: '',
   finding_type: 'health_check',
   severity: 'medium',
@@ -110,8 +112,19 @@ function mapAssetToDeviceTypeOption(asset: Asset, fallback = ''): string {
   return 'Other';
 }
 
+function normalizeDeviceTypeKey(label: string): string {
+  const raw = label.toLowerCase();
+  if (raw.includes('access point') || raw.includes('access_point') || /\bap\b/.test(raw)) return 'access_point';
+  if (raw.includes('switch')) return 'switch';
+  if (raw.includes('router')) return 'router';
+  if (raw.includes('laptop')) return 'laptop';
+  if (raw.includes('desktop') || /\bpc\b/.test(raw)) return 'pc';
+  return 'other';
+}
+
 /* ─── Device type → form field mapping ────────────────────────────────── */
-function getRelevantFieldsForType(deviceType: string) {
+function getRelevantFieldsForType(deviceTypeLabel: string) {
+  const deviceType = normalizeDeviceTypeKey(deviceTypeLabel);
   const networkDevices = ['switch', 'router', 'access_point'];
   return {
     showUtilization: networkDevices.includes(deviceType),
@@ -125,6 +138,7 @@ type MobileTab = 'capture' | 'findings' | 'report';
    Page component
 ═══════════════════════════════════════════════════════════════════════════ */
 export default function PMReportsPage() {
+  const { isScoped, primaryLocationId } = useLocationScope();
   /* data */
   const [locations, setLocations] = useState<Location[]>([]);
   const [findings, setFindings] = useState<PMFinding[]>([]);
@@ -139,6 +153,12 @@ export default function PMReportsPage() {
   /* filters */
   const [monthFilter, setMonthFilter] = useState(getCurrentMonth());
   const [locationFilter, setLocationFilter] = useState('');
+
+  const effectiveLocationFilter = useMemo(() => {
+    if (locationFilter) return locationFilter;
+    if (isScoped && primaryLocationId) return String(primaryLocationId);
+    return '';
+  }, [locationFilter, isScoped, primaryLocationId]);
   const [findingSearch, setFindingSearch] = useState('');
 
   /* asset search */
@@ -166,9 +186,9 @@ export default function PMReportsPage() {
 
   /* ── derived ─────────────────────────────────────────────────────────── */
   const activeLocationID = useMemo(() => {
-    if (locationFilter) return Number(locationFilter);
+    if (effectiveLocationFilter) return Number(effectiveLocationFilter);
     return 0;
-  }, [locationFilter]);
+  }, [effectiveLocationFilter]);
 
   const selectedLocation = useMemo(
     () => locations.find((l) => l.id === activeLocationID) ?? null,
@@ -232,16 +252,16 @@ export default function PMReportsPage() {
         itamAPI.getLocations(),
         itamAPI.listPMFindings({
           month: monthFilter || undefined,
-          location_id: locationFilter || undefined,
+          location_id: effectiveLocationFilter || undefined,
           q: findingSearch || undefined,
         }),
         itamAPI.listPMReports({
           month: monthFilter || undefined,
-          location_id: locationFilter || undefined,
+          location_id: effectiveLocationFilter || undefined,
         }),
         itamAPI.getPMSummary({
           month: monthFilter || undefined,
-          location_id: locationFilter || undefined,
+          location_id: effectiveLocationFilter || undefined,
         }),
       ]);
       setLocations(locRes.data ?? []);
@@ -255,13 +275,15 @@ export default function PMReportsPage() {
     }
   };
 
-  useEffect(() => { loadData(); }, [monthFilter, locationFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadData(); }, [monthFilter, effectiveLocationFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(async () => {
       if (assetSearch.trim().length < 2) { setAssetSearchResults([]); return; }
       try {
-        const res = await itamAPI.searchAssets(assetSearch.trim());
+        const res = await itamAPI.searchAssets(assetSearch.trim(), {
+          location_id: activeLocationID || undefined,
+        });
         setAssetSearchResults(res.data.assets ?? []);
       } catch { setAssetSearchResults([]); }
     }, 300);
@@ -293,6 +315,7 @@ export default function PMReportsPage() {
   const openModalForEdit = (f: PMFinding) => {
     setEditingFinding(f);
     setFindingForm({
+      device_title: f.device_label ?? f.asset?.name ?? '',
       asset_type_label: f.asset_type_label ?? '',
       finding_type: f.finding_type ?? 'health_check',
       severity: f.severity ?? 'medium',
@@ -332,25 +355,39 @@ export default function PMReportsPage() {
     }
     setFindingForm((p) => ({
       ...p,
+      device_title: asset.name,
       asset_type_label: mapAssetToDeviceTypeOption(asset, p.asset_type_label),
     }));
   };
 
   /* ── actions ─────────────────────────────────────────────────────────── */
   const submitFinding = async (): Promise<boolean> => {
-    if (!selectedAsset) { window.alert('Please link a device asset before saving.'); return false; }
-    if (!selectedAsset.location_id) { window.alert('Linked asset has no location.'); return false; }
+    if (!hasLocationSelected) { window.alert('Please select an inspection location first.'); return false; }
+
+    const title = selectedAsset
+      ? selectedAsset.name
+      : findingForm.device_title.trim();
+
+    if (!title) {
+      window.alert(selectedAsset ? 'Linked asset has no name.' : 'Please enter a finding title.');
+      return false;
+    }
     if (!findingForm.finding_type.trim()) { window.alert('Finding type is required.'); return false; }
+
+    const locationId = selectedAsset?.location_id ?? activeLocationID;
+    if (!locationId) { window.alert('Location is required.'); return false; }
+
     setSubmittingFinding(true);
     try {
       const payload = {
-        location_id: selectedAsset.location_id,
-        asset_id: selectedAsset.id,
+        location_id: locationId,
+        asset_id: selectedAsset?.id,
+        device_label: title,
         asset_type_label:
           findingForm.asset_type_label ||
-          selectedAsset.type?.name ||
-          selectedAsset.category?.name ||
-          '',
+          selectedAsset?.type?.name ||
+          selectedAsset?.category?.name ||
+          'General',
         finding_type: findingForm.finding_type,
         severity: findingForm.severity,
         status: findingForm.status,
@@ -663,11 +700,32 @@ export default function PMReportsPage() {
             </div>
 
             {/* body */}
-            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-              {/* Device Type (always visible, first field) */}
+            <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+              {/* Title — auto from asset or manual */}
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">
-                  Link Device Asset <span className="text-rose-400">*</span>
+                  Finding Title <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  value={selectedAsset ? selectedAsset.name : findingForm.device_title}
+                  onChange={(e) => {
+                    if (!selectedAsset) {
+                      setFindingForm((p) => ({ ...p, device_title: e.target.value }));
+                    }
+                  }}
+                  readOnly={!!selectedAsset}
+                  placeholder={selectedAsset ? '' : 'e.g. Broken projector in meeting room'}
+                  className={`w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground ${selectedAsset ? 'opacity-70 cursor-not-allowed' : ''}`}
+                />
+                {selectedAsset && (
+                  <p className="mt-1 text-[11px] text-emerald-600">Auto-generated from linked asset.</p>
+                )}
+              </div>
+
+              {/* Optional asset link */}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">
+                  Link Asset <span className="text-muted-foreground">(optional)</span>
                 </label>
                 <div className="relative">
                   <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -684,7 +742,7 @@ export default function PMReportsPage() {
                   />
                 </div>
                 {assetSearchResults.length > 0 && (
-                  <div className="mt-1 max-h-32 overflow-auto rounded-lg border border-border bg-background">
+                  <div className="mt-1 max-h-28 overflow-auto rounded-lg border border-border bg-background">
                     {assetSearchResults.slice(0, 6).map((a) => (
                       <button
                         key={a.id}
@@ -706,20 +764,30 @@ export default function PMReportsPage() {
                   </div>
                 )}
                 {selectedAsset ? (
-                  <>
-                    <p className="mt-1 text-[11px] text-emerald-300">
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-emerald-600 truncate">
                       Linked: {selectedAsset.name} ({selectedAsset.asset_tag || 'No tag'})
                     </p>
-                    <p className="mt-0.5 text-[11px] text-blue-300">
-                      Location auto-set to: {selectedAsset.location?.name || 'Selected asset location'}
-                    </p>
-                  </>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAsset(null);
+                        setAssetSearch('');
+                        setFindingForm((p) => ({ ...p, device_title: '' }));
+                      }}
+                      className="text-[11px] text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 ) : (
-                  <p className="mt-1 text-[11px] text-amber-300">Device asset is required.</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    No asset linked — enter a title manually above.
+                  </p>
                 )}
               </div>
 
-              {/* Device Type (always visible, first field) */}
+              {/* Device Type */}
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">
                   Device Type
@@ -897,8 +965,34 @@ export default function PMReportsPage() {
     );
   };
 
+  const renderStepIndicator = () => {
+    const step = !hasLocationSelected ? 1 : selectedFindingsCount > 0 || findings.length > 0 ? 3 : 2;
+    const steps = [
+      { n: 1, label: 'Location' },
+      { n: 2, label: 'Findings' },
+      { n: 3, label: 'Report' },
+    ];
+    return (
+      <div className="flex items-center gap-2 mb-3">
+        {steps.map((s, i) => (
+          <div key={s.n} className="flex items-center gap-2 flex-1 min-w-0">
+            <div className={`h-6 w-6 rounded-full text-xs font-semibold flex items-center justify-center shrink-0 ${
+              step >= s.n ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+            }`}>
+              {s.n}
+            </div>
+            <span className={`text-xs truncate ${step >= s.n ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+              {s.label}
+            </span>
+            {i < steps.length - 1 && <div className="flex-1 h-px bg-border min-w-2" />}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderLocationPicker = () => (
-    <div className="bg-card border border-border rounded-2xl p-5 space-y-4 mb-4">
+    <div className="bg-card border border-border rounded-xl p-4 space-y-3 mb-3">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
@@ -919,28 +1013,23 @@ export default function PMReportsPage() {
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {locations.map((loc) => {
-          const selected = locationFilter === String(loc.id);
+          const selected = effectiveLocationFilter === String(loc.id);
           return (
             <button
               key={loc.id}
               type="button"
               onClick={() => setLocationFilter(String(loc.id))}
-              className={`text-left rounded-xl border p-3 transition-colors ${
+              className={`text-left rounded-lg border px-2.5 py-2 transition-colors ${
                 selected
                   ? 'border-primary bg-primary/10 ring-1 ring-primary/30'
                   : 'border-border bg-background hover:bg-muted/40'
               }`}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{loc.name}</p>
-                  {loc.address && (
-                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{loc.address}</p>
-                  )}
-                </div>
-                {selected && <Check className="h-4 w-4 text-primary shrink-0" />}
+              <div className="flex items-center justify-between gap-1">
+                <p className="text-xs font-medium text-foreground truncate">{loc.name}</p>
+                {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
               </div>
             </button>
           );
@@ -976,6 +1065,7 @@ export default function PMReportsPage() {
           type="button"
           onClick={() => setLocationFilter('')}
           className="px-3 py-1.5 border border-border rounded-lg text-xs text-foreground hover:bg-muted transition-colors"
+          disabled={isScoped}
         >
           Change location
         </button>
@@ -996,9 +1086,9 @@ export default function PMReportsPage() {
     <PageContainer className="flex flex-col">
       <PageHeader
         title="Site Inspection"
-        subtitle="Monthly location walk-through — record findings and generate reports."
-        backTo="/itam"
-        backLabel="Assets"
+        subtitle="Choose location → add findings → generate report."
+        backTo="/"
+        backLabel="Dashboard"
         actions={
           hasLocationSelected ? (
             <button
@@ -1011,22 +1101,24 @@ export default function PMReportsPage() {
         }
       />
 
+      {renderStepIndicator()}
+
       {!hasLocationSelected ? (
         renderLocationPicker()
       ) : (
         <>
           {renderInspectionContextBar()}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 shrink-0">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3 shrink-0">
             {[
               { label: 'Reports', value: summary?.total_reports ?? 0 },
               { label: 'Findings', value: summary?.total_findings ?? summary?.total_failures ?? 0 },
-              { label: 'Urgent Issues', value: summary?.urgent_issues ?? 0 },
-              { label: 'Pending Follow-ups', value: summary?.pending_follow_ups ?? 0 },
+              { label: 'Urgent', value: summary?.urgent_issues ?? 0 },
+              { label: 'Follow-ups', value: summary?.pending_follow_ups ?? 0 },
             ].map((s) => (
-              <div key={s.label} className="bg-card border border-border rounded-xl px-4 py-3">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
-                <p className="text-xl font-bold text-foreground mt-0.5">{s.value}</p>
+              <div key={s.label} className="bg-card border border-border rounded-lg px-3 py-2">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.label}</p>
+                <p className="text-lg font-bold text-foreground">{s.value}</p>
               </div>
             ))}
           </div>
@@ -1042,10 +1134,10 @@ export default function PMReportsPage() {
       {/* ══════════════════════════════════════════════════════════════════
           DESKTOP — two-column layout (md+)
       ══════════════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex gap-4 flex-1 min-h-0">
+      <div className="hidden md:flex gap-3 flex-1 min-h-0">
 
         {/* left — findings pool */}
-        <div className="flex flex-col flex-1 min-w-0 bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="flex flex-col flex-1 min-w-0 bg-card border border-border rounded-xl overflow-hidden">
           {/* pool toolbar */}
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
             <div className="relative flex-1">

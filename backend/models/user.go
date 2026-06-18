@@ -26,6 +26,9 @@ type User struct {
 	IsSuperAdmin bool        `gorm:"default:false" json:"is_super_admin"`
 	IsActive  bool           `gorm:"default:true" json:"is_active"`
 
+	PrimaryLocationID *uint     `gorm:"index" json:"primary_location_id,omitempty"`
+	PrimaryLocation   *Location `gorm:"foreignKey:PrimaryLocationID" json:"primary_location,omitempty"`
+
 	CreatedTickets  []Ticket `gorm:"foreignKey:RequesterID" json:"created_tickets,omitempty"`
 	AssignedTickets []Ticket `gorm:"foreignKey:AssigneeID" json:"assigned_tickets,omitempty"`
 

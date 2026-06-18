@@ -600,6 +600,18 @@ All 12 planned steps have been significantly completed. The system includes:
 - **Refinements**: Full in-app notification system (with bell popover), Audit Logs (History tab on tickets), and Profile Page management.
 - **ITAM (IT Asset Management)**: Lifecycle tracking, warranty monitoring, and deep integration with the ticketing system.
 
+## Latest Update (Jun 18, 2026 - ITAM UX, Site Inspection Flow, Location PIC Scope)
+
+- **ITAM dashboard simplified**: compact operational KPI row (`In Use`, `Need Attention`, `Out of Service`, `Unassigned`); removed warranty emphasis and site-inspection card from asset hub; location breakdown collapsed behind expand.
+- **Sidebar fix**: `/itam/pm` no longer highlights both Assets and Site Inspections.
+- **Site Inspection UX**: 3-step flow indicator (Location → Findings → Report); tighter layout/spacing; back link to Dashboard; Add Finding supports optional asset link with auto-title or required manual title when unlinked.
+- **Backend PM findings**: `asset_id` optional; `device_label` required when no asset linked.
+- **Location PIC scope (phase 1)**:
+  - Added `primary_location_id` on users (model, auth/admin APIs, Users admin UI).
+  - Server-side enforcement on ITAM assets, stats, locations list, PM findings/reports/summary for scoped PIC users.
+  - Frontend `useLocationScope` hook; scoped users auto-filter ITAM dashboard/inventory and site inspection data to assigned location.
+- Validation: `go build ./...` pass; `npm run build` pass.
+
 ## Latest Update (Jun 9, 2026 - Navigation, Sizing, Site Inspection UX)
 
 - **Consistent navigation**: `BackLink` component; breadcrumbs on detail pages (KB, tickets, assets, site inspection); removed duplicate back+breadcrumb combos

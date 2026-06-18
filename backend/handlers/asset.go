@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"dahticket-backend/database"
+	"dahticket-backend/middleware"
 	"dahticket-backend/models"
 
 	"github.com/gin-gonic/gin"
@@ -69,6 +70,11 @@ func ListAssets(c *gin.Context) {
 
 	query := database.DB.Model(&models.Asset{}).Where("is_active = ?", true)
 
+	scopedLocationID, ok := EnforceLocationQuery(c)
+	if !ok {
+		return
+	}
+
 	// Filters
 	if search := c.Query("search"); search != "" {
 		query = query.Where("name ILIKE ? OR asset_tag ILIKE ? OR serial_number ILIKE ?",
@@ -85,6 +91,8 @@ func ListAssets(c *gin.Context) {
 	}
 	if locationID := c.Query("location_id"); locationID != "" {
 		query = query.Where("location_id = ?", locationID)
+	} else if scopedLocationID != "" {
+		query = query.Where("location_id = ?", scopedLocationID)
 	}
 	if assignedUserID := c.Query("assigned_user_id"); assignedUserID != "" {
 		if assignedUserID == "unassigned" {
@@ -141,6 +149,15 @@ func CreateAsset(c *gin.Context) {
 	}
 
 	userID := c.MustGet("userID").(uint)
+
+	if req.LocationID != nil {
+		if !EnforceLocationWrite(c, *req.LocationID) {
+			return
+		}
+	} else if user, ok := middleware.GetUser(c); ok && user.HasLocationScope() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "location_id is required for your account scope"})
+		return
+	}
 
 	tagCandidate := strings.TrimSpace(req.AssetTag)
 	var asset models.Asset
@@ -233,6 +250,10 @@ func GetAsset(c *gin.Context) {
 		return
 	}
 
+	if !EnforceAssetLocationWrite(c, asset) {
+		return
+	}
+
 	// Also fetch linked tickets
 	var links []models.AssetTicketLink
 	database.DB.
@@ -264,6 +285,10 @@ func UpdateAsset(c *gin.Context) {
 	var asset models.Asset
 	if err := database.DB.First(&asset, uint(assetID)).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Asset not found"})
+		return
+	}
+
+	if !EnforceAssetLocationWrite(c, asset) {
 		return
 	}
 
@@ -307,6 +332,9 @@ func UpdateAsset(c *gin.Context) {
 		asset.ConditionID = req.ConditionID
 	}
 	if req.LocationID != nil {
+		if !EnforceLocationWrite(c, *req.LocationID) {
+			return
+		}
 		asset.LocationID = req.LocationID
 	}
 	if req.VendorID != nil {
@@ -384,43 +412,72 @@ func DeleteAsset(c *gin.Context) {
 
 // GetITAMStats returns summary statistics for the ITAM dashboard.
 func GetITAMStats(c *gin.Context) {
-	type StatusCount struct {
-		Name  string `json:"name"`
-		Count int64  `json:"count"`
-	}
-
-	var totalAssets int64
-	database.DB.Model(&models.Asset{}).Where("is_active = ?", true).Count(&totalAssets)
-
-	var unassigned int64
-	database.DB.Model(&models.Asset{}).Where("is_active = ? AND assigned_user_id IS NULL", true).Count(&unassigned)
-
-	// Warranty expiring in next 30 days
-	cutoff := time.Now().AddDate(0, 0, 30)
-	var warrantyExpiringSoon int64
-	database.DB.Model(&models.Asset{}).
-		Where("is_active = ? AND warranty_end_date IS NOT NULL AND warranty_end_date <= ? AND warranty_end_date >= ?", true, cutoff, time.Now()).
-		Count(&warrantyExpiringSoon)
-
-	// Already expired
-	var warrantyExpired int64
-	database.DB.Model(&models.Asset{}).
-		Where("is_active = ? AND warranty_end_date IS NOT NULL AND warranty_end_date < ?", true, time.Now()).
-		Count(&warrantyExpired)
-
-	// Assets by status
 	type StatusResult struct {
 		StatusID uint   `json:"status_id"`
 		Name     string `json:"name"`
 		Count    int64  `json:"count"`
 	}
+
+	scopedLocationID, ok := EnforceLocationQuery(c)
+	if !ok {
+		return
+	}
+
+	baseQuery := database.DB.Model(&models.Asset{}).Where("is_active = ?", true)
+	if scopedLocationID != "" {
+		baseQuery = baseQuery.Where("location_id = ?", scopedLocationID)
+	}
+
+	var totalAssets int64
+	baseQuery.Count(&totalAssets)
+
+	unassignedQuery := database.DB.Model(&models.Asset{}).Where("is_active = ? AND assigned_user_id IS NULL", true)
+	if scopedLocationID != "" {
+		unassignedQuery = unassignedQuery.Where("location_id = ?", scopedLocationID)
+	}
+	var unassigned int64
+	unassignedQuery.Count(&unassigned)
+
+	// Warranty expiring in next 30 days (kept for API compatibility)
+	cutoff := time.Now().AddDate(0, 0, 30)
+	warrantyQuery := database.DB.Model(&models.Asset{}).
+		Where("is_active = ? AND warranty_end_date IS NOT NULL AND warranty_end_date <= ? AND warranty_end_date >= ?", true, cutoff, time.Now())
+	if scopedLocationID != "" {
+		warrantyQuery = warrantyQuery.Where("location_id = ?", scopedLocationID)
+	}
+	var warrantyExpiringSoon int64
+	warrantyQuery.Count(&warrantyExpiringSoon)
+
+	warrantyExpiredQuery := database.DB.Model(&models.Asset{}).
+		Where("is_active = ? AND warranty_end_date IS NOT NULL AND warranty_end_date < ?", true, time.Now())
+	if scopedLocationID != "" {
+		warrantyExpiredQuery = warrantyExpiredQuery.Where("location_id = ?", scopedLocationID)
+	}
+	var warrantyExpired int64
+	warrantyExpiredQuery.Count(&warrantyExpired)
+
 	var statusBreakdown []StatusResult
-	database.DB.Table("assets").
+	statusQuery := database.DB.Table("assets").
 		Select("assets.status_id, asset_statuses.name, count(*) as count").
 		Joins("JOIN asset_statuses ON asset_statuses.id = assets.status_id").
-		Where("assets.deleted_at IS NULL AND assets.is_active = ?", true).
-		Group("assets.status_id, asset_statuses.name").
-		Find(&statusBreakdown)
+		Where("assets.deleted_at IS NULL AND assets.is_active = ?", true)
+	if scopedLocationID != "" {
+		statusQuery = statusQuery.Where("assets.location_id = ?", scopedLocationID)
+	}
+	statusQuery.Group("assets.status_id, asset_statuses.name").Find(&statusBreakdown)
+
+	var inUse, needAttention, outOfService int64
+	for _, s := range statusBreakdown {
+		name := strings.ToLower(strings.TrimSpace(s.Name))
+		switch {
+		case name == "in use" || name == "available" || name == "in stock":
+			inUse += s.Count
+		case name == "in repair" || name == "needs repair" || name == "need attention" || name == "need attention/repair":
+			needAttention += s.Count
+		case name == "decommissioned" || name == "decommission" || name == "broken" || name == "out of service":
+			outOfService += s.Count
+		}
+	}
 
 	type LocationResult struct {
 		LocationID *uint  `json:"location_id"`
@@ -428,11 +485,14 @@ func GetITAMStats(c *gin.Context) {
 		Count      int64  `json:"count"`
 	}
 	var byLocation []LocationResult
-	database.DB.Table("assets").
+	locationQuery := database.DB.Table("assets").
 		Select("assets.location_id, COALESCE(locations.name, 'Unassigned') as name, count(*) as count").
 		Joins("LEFT JOIN locations ON locations.id = assets.location_id").
-		Where("assets.deleted_at IS NULL AND assets.is_active = ?", true).
-		Group("assets.location_id, locations.name").
+		Where("assets.deleted_at IS NULL AND assets.is_active = ?", true)
+	if scopedLocationID != "" {
+		locationQuery = locationQuery.Where("assets.location_id = ?", scopedLocationID)
+	}
+	locationQuery.Group("assets.location_id, locations.name").
 		Order("count DESC").
 		Limit(8).
 		Find(&byLocation)
@@ -444,6 +504,12 @@ func GetITAMStats(c *gin.Context) {
 		"warranty_expired":       warrantyExpired,
 		"by_status":              statusBreakdown,
 		"by_location":            byLocation,
+		"operational": gin.H{
+			"in_use":          inUse,
+			"need_attention":  needAttention,
+			"out_of_service":  outOfService,
+			"unassigned":      unassigned,
+		},
 	})
 }
 
@@ -627,13 +693,25 @@ func SearchAssets(c *gin.Context) {
 		return
 	}
 
-	var assets []models.Asset
-	database.DB.
-		Preload("Status").Preload("Type").Preload("Category").
+	scopedLocationID, ok := EnforceLocationQuery(c)
+	if !ok {
+		return
+	}
+
+	query := database.DB.
+		Preload("Status").Preload("Type").Preload("Category").Preload("Location").
 		Where("is_active = ? AND (name ILIKE ? OR asset_tag ILIKE ? OR serial_number ILIKE ?)",
-			true, "%"+search+"%", "%"+search+"%", "%"+search+"%").
-		Limit(10).
-		Find(&assets)
+			true, "%"+search+"%", "%"+search+"%", "%"+search+"%")
+
+	if scopedLocationID != "" {
+		query = query.Where("location_id = ?", scopedLocationID)
+	}
+	if locationFilter := c.Query("location_id"); locationFilter != "" && scopedLocationID == "" {
+		query = query.Where("location_id = ?", locationFilter)
+	}
+
+	var assets []models.Asset
+	query.Limit(10).Find(&assets)
 
 	c.JSON(http.StatusOK, gin.H{"assets": assets})
 }

@@ -216,7 +216,17 @@ export default function DashboardLayout() {
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {filteredNav.map((item) => {
-            const isActive = location.pathname === item.href || (item.href !== '/' && location.pathname.startsWith(item.href + '/'));
+            const isActive = (() => {
+              if (location.pathname === item.href) return true;
+              if (item.href === '/itam') {
+                return location.pathname === '/itam' ||
+                  (location.pathname.startsWith('/itam/') && !location.pathname.startsWith('/itam/pm'));
+              }
+              if (item.href !== '/') {
+                return location.pathname.startsWith(item.href + '/');
+              }
+              return false;
+            })();
             return (
               <Link key={item.href} to={item.href} onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-all duration-150 ${isActive ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>

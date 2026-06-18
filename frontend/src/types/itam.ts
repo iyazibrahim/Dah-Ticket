@@ -238,6 +238,12 @@ export interface ITAMStats {
   warranty_expired: number;
   by_status: Array<{ status_id: number; name: string; count: number }>;
   by_location?: Array<{ location_id: number | null; name: string; count: number }>;
+  operational?: {
+    in_use: number;
+    need_attention: number;
+    out_of_service: number;
+    unassigned: number;
+  };
 }
 
 export interface ImportPreviewAssetMatch {

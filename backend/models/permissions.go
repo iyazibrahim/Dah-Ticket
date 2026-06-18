@@ -57,3 +57,19 @@ func (u User) CanPublishWiki() bool {
 func (u User) IsAssignableStaff() bool {
 	return u.Role == RoleITAgent || u.Role == RoleManager || u.Role == RoleAdmin
 }
+
+// HasLocationScope is true when the user is restricted to a single primary location (PIC).
+func (u User) HasLocationScope() bool {
+	if u.IsSuperAdmin || u.IsFullAdmin() {
+		return false
+	}
+	return u.PrimaryLocationID != nil
+}
+
+// ScopedLocationID returns the user's primary location when location-scoped.
+func (u User) ScopedLocationID() *uint {
+	if u.HasLocationScope() {
+		return u.PrimaryLocationID
+	}
+	return nil
+}

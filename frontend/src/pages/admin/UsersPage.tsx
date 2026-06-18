@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../services/api';
+import { itamAPI } from '../../services/itamAPI';
 import type { User } from '../../types';
-import { Loader2, Search, Plus, Shield, ShieldCheck, UserIcon, X, AlertCircle, CheckCircle2 } from 'lucide-react';
+import type { Location } from '../../types/itam';
+import { Loader2, Search, Plus, Shield, ShieldCheck, UserIcon, X, AlertCircle, CheckCircle2, MapPin } from 'lucide-react';
 import PageContainer from '../../components/PageContainer';
 
 export default function UsersPage() {
@@ -12,7 +14,12 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  useEffect(() => {
+    itamAPI.getLocations().then((res) => setLocations(res.data ?? [])).catch(() => setLocations([]));
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
@@ -78,6 +85,22 @@ export default function UsersPage() {
     }
   };
 
+  const handleLocationChange = async (user: User, locationId: string) => {
+    try {
+      await api.put(`/admin/users/${user.id}`, {
+        primary_location_id: locationId ? Number(locationId) : null,
+      });
+      showFeedback('success', `${user.first_name}'s location updated`);
+      fetchUsers();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      showFeedback('error', axiosErr.response?.data?.error || 'Failed to update location');
+    }
+  };
+
+  const locationName = (id?: number | null) =>
+    locations.find((l) => l.id === id)?.name ?? '—';
+
   return (
     <PageContainer className="space-y-5">
       {/* Feedback toast */}
@@ -134,6 +157,7 @@ export default function UsersPage() {
                   <th className="px-5 py-3 text-left">User</th>
                   <th className="px-5 py-3 text-left hidden sm:table-cell">Email</th>
                   <th className="px-5 py-3 text-left">Role</th>
+                  <th className="px-5 py-3 text-left hidden lg:table-cell">Location (PIC)</th>
                   <th className="px-5 py-3 text-left hidden md:table-cell">Status</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
@@ -166,6 +190,29 @@ export default function UsersPage() {
                           <RoleIcon className="h-3 w-3" /> {roleLabels[u.role]}
                         </span>
                       </td>
+                      <td className="px-5 py-4 hidden lg:table-cell">
+                        {u.is_super_admin ? (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <MapPin className="h-3 w-3" /> All locations
+                          </span>
+                        ) : (
+                          <select
+                            value={u.primary_location_id ?? ''}
+                            onChange={(e) => handleLocationChange(u, e.target.value)}
+                            className="text-xs px-2 py-1 rounded-lg border border-border bg-card max-w-[160px]"
+                          >
+                            <option value="">No location</option>
+                            {locations.map((loc) => (
+                              <option key={loc.id} value={loc.id}>{loc.name}</option>
+                            ))}
+                          </select>
+                        )}
+                        {u.primary_location_id && !u.is_super_admin && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5 truncate max-w-[160px]">
+                            {locationName(u.primary_location_id)}
+                          </p>
+                        )}
+                      </td>
                       <td className="px-5 py-4 hidden md:table-cell">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${u.is_active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                           {u.is_active ? 'Active' : 'Inactive'}
@@ -195,6 +242,7 @@ export default function UsersPage() {
       {/* Create User Modal */}
       {showCreateModal && (
         <CreateUserModal
+          locations={locations}
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => { setShowCreateModal(false); fetchUsers(); showFeedback('success', 'User created'); }}
         />
@@ -204,8 +252,16 @@ export default function UsersPage() {
 }
 
 // --- Create User Modal ---
-function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', password: '', role: 'employee', is_admin: false });
+function CreateUserModal({ locations, onClose, onSuccess }: { locations: Location[]; onClose: () => void; onSuccess: () => void }) {
+  const [form, setForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    password: '',
+    role: 'employee',
+    is_admin: false,
+    primary_location_id: '' as string | number,
+  });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -214,7 +270,10 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
     setError('');
     setIsSubmitting(true);
     try {
-      await api.post('/admin/users', form);
+      await api.post('/admin/users', {
+        ...form,
+        primary_location_id: form.primary_location_id ? Number(form.primary_location_id) : undefined,
+      });
       onSuccess();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
@@ -275,6 +334,20 @@ function CreateUserModal({ onClose, onSuccess }: { onClose: () => void; onSucces
             <input type="checkbox" checked={form.is_admin} onChange={(e) => setForm((f) => ({ ...f, is_admin: e.target.checked }))} />
             Grant admin elevation
           </label>
+          <div>
+            <label className="block text-xs font-medium text-foreground mb-1">Primary location (PIC scope)</label>
+            <select
+              value={form.primary_location_id}
+              onChange={(e) => setForm((f) => ({ ...f, primary_location_id: e.target.value }))}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="">None — central / all locations</option>
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>{loc.name}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground mt-1">Assign one location for site PIC admins. They only see data for that location.</p>
+          </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted">Cancel</button>
             <button type="submit" disabled={isSubmitting}

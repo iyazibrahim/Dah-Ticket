@@ -14,22 +14,24 @@ import (
 )
 
 type AdminCreateUserRequest struct {
-	FirstName string `json:"first_name" binding:"required,min=2,max=100"`
-	LastName  string `json:"last_name" binding:"required,min=2,max=100"`
-	Email     string `json:"email" binding:"required,email"`
-	Password  string `json:"password" binding:"required,min=8"`
-	Role      string `json:"role" binding:"required,oneof=employee it_agent manager"`
-	IsAdmin   bool   `json:"is_admin"`
+	FirstName         string `json:"first_name" binding:"required,min=2,max=100"`
+	LastName          string `json:"last_name" binding:"required,min=2,max=100"`
+	Email             string `json:"email" binding:"required,email"`
+	Password          string `json:"password" binding:"required,min=8"`
+	Role              string `json:"role" binding:"required,oneof=employee it_agent manager"`
+	IsAdmin           bool   `json:"is_admin"`
+	PrimaryLocationID *uint  `json:"primary_location_id"`
 }
 
 type AdminUpdateUserRequest struct {
-	FirstName *string `json:"first_name" binding:"omitempty,min=2,max=100"`
-	LastName  *string `json:"last_name" binding:"omitempty,min=2,max=100"`
-	Email     *string `json:"email" binding:"omitempty,email"`
-	Role      *string `json:"role" binding:"omitempty,oneof=employee it_agent manager"`
-	IsAdmin   *bool   `json:"is_admin"`
-	IsActive  *bool   `json:"is_active"`
-	Password  *string `json:"password" binding:"omitempty,min=8"`
+	FirstName         *string `json:"first_name" binding:"omitempty,min=2,max=100"`
+	LastName          *string `json:"last_name" binding:"omitempty,min=2,max=100"`
+	Email             *string `json:"email" binding:"omitempty,email"`
+	Role              *string `json:"role" binding:"omitempty,oneof=employee it_agent manager"`
+	IsAdmin           *bool   `json:"is_admin"`
+	IsActive          *bool   `json:"is_active"`
+	Password          *string `json:"password" binding:"omitempty,min=8"`
+	PrimaryLocationID **uint  `json:"primary_location_id"`
 }
 
 func countActiveAdmins(excludeID uint) int64 {
@@ -160,13 +162,22 @@ func AdminCreateUser(c *gin.Context) {
 	}
 
 	user := models.User{
-		FirstName: req.FirstName,
-		LastName:  req.LastName,
-		Email:     req.Email,
-		Password:  string(hashedPassword),
-		Role:      models.Role(req.Role),
-		IsAdmin:   req.IsAdmin,
-		IsActive:  true,
+		FirstName:         req.FirstName,
+		LastName:          req.LastName,
+		Email:             req.Email,
+		Password:          string(hashedPassword),
+		Role:              models.Role(req.Role),
+		IsAdmin:           req.IsAdmin,
+		IsActive:          true,
+		PrimaryLocationID: req.PrimaryLocationID,
+	}
+
+	if req.PrimaryLocationID != nil {
+		var loc models.Location
+		if err := database.DB.First(&loc, *req.PrimaryLocationID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid primary location"})
+			return
+		}
 	}
 
 	if err := database.DB.Create(&user).Error; err != nil {
@@ -237,7 +248,7 @@ func AdminUpdateUser(c *gin.Context) {
 	oldValues := map[string]interface{}{
 		"first_name": user.FirstName, "last_name": user.LastName,
 		"email": user.Email, "role": user.Role, "is_active": user.IsActive,
-		"is_admin": user.IsAdmin,
+		"is_admin": user.IsAdmin, "primary_location_id": user.PrimaryLocationID,
 	}
 
 	changes := []string{}
@@ -274,6 +285,20 @@ func AdminUpdateUser(c *gin.Context) {
 		changes = append(changes, action)
 		user.IsActive = *req.IsActive
 	}
+	if req.PrimaryLocationID != nil {
+		if *req.PrimaryLocationID == nil {
+			user.PrimaryLocationID = nil
+			changes = append(changes, "primary location cleared")
+		} else {
+			var loc models.Location
+			if err := database.DB.First(&loc, **req.PrimaryLocationID).Error; err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid primary location"})
+				return
+			}
+			user.PrimaryLocationID = *req.PrimaryLocationID
+			changes = append(changes, fmt.Sprintf("primary location set to %s", loc.Name))
+		}
+	}
 	if req.Password != nil {
 		hashed, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
 		if err != nil {
@@ -292,7 +317,7 @@ func AdminUpdateUser(c *gin.Context) {
 	newValues := map[string]interface{}{
 		"first_name": user.FirstName, "last_name": user.LastName,
 		"email": user.Email, "role": user.Role, "is_active": user.IsActive,
-		"is_admin": user.IsAdmin,
+		"is_admin": user.IsAdmin, "primary_location_id": user.PrimaryLocationID,
 	}
 
 	LogAudit(c, models.AuditActionUpdate, "user", user.ID,

@@ -480,8 +480,18 @@ func DeleteAssetCondition(c *gin.Context) {
 // --- Locations ---
 
 func ListLocations(c *gin.Context) {
+	scopedLocationID, ok := EnforceLocationQuery(c)
+	if !ok {
+		return
+	}
+
+	query := database.DB.Model(&models.Location{})
+	if scopedLocationID != "" {
+		query = query.Where("id = ?", scopedLocationID)
+	}
+
 	var locations []models.Location
-	if err := database.DB.Find(&locations).Error; err != nil {
+	if err := query.Find(&locations).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch locations"})
 		return
 	}
