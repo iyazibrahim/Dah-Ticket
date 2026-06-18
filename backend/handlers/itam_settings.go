@@ -61,7 +61,8 @@ type UpdateITAMSettingsRequest struct {
 	TelegramChatID       *string `json:"telegram_chat_id"`
 	TelegramBotToken     *string `json:"telegram_bot_token"`
 	ClearTelegramBotToken *bool  `json:"clear_telegram_bot_token"`
-	KBMaxUploadMB        *int    `json:"kb_max_upload_mb"`
+	KBMaxUploadMB             *int  `json:"kb_max_upload_mb"`
+	AllowPublicRegistration   *bool `json:"allow_public_registration"`
 }
 
 type TestEmailRequest struct {
@@ -395,6 +396,9 @@ func UpdateITAMSettings(c *gin.Context) {
 	}
 	if req.KBMaxUploadMB != nil && *req.KBMaxUploadMB > 0 {
 		settings.KBMaxUploadMB = *req.KBMaxUploadMB
+	}
+	if req.AllowPublicRegistration != nil {
+		settings.AllowPublicRegistration = *req.AllowPublicRegistration
 	}
 
 	if err := database.DB.Save(&settings).Error; err != nil {

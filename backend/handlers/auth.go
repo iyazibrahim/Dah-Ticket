@@ -8,6 +8,7 @@ import (
 	"dahticket-backend/database"
 	"dahticket-backend/middleware"
 	"dahticket-backend/models"
+	"dahticket-backend/services"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -55,8 +56,20 @@ type UserResponse struct {
 
 // --- Handlers ---
 
+// GetRegistrationStatus returns whether public self-registration is open.
+func GetRegistrationStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"allow_public_registration": services.IsPublicRegistrationAllowed(),
+	})
+}
+
 // Register creates a new user account with the "employee" role.
 func Register(c *gin.Context) {
+	if !services.IsPublicRegistrationAllowed() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Public registration is disabled. Contact an administrator to create an account."})
+		return
+	}
+
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

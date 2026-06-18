@@ -91,6 +91,7 @@ func main() {
 		// Authentication
 		auth := api.Group("/auth")
 		{
+			auth.GET("/registration-status", handlers.GetRegistrationStatus)
 			auth.POST("/register", handlers.Register)
 			auth.POST("/login", handlers.Login)
 		}

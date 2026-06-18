@@ -30,7 +30,8 @@ type ITAMSettings struct {
 	TelegramEnabled       bool `gorm:"default:false" json:"telegram_enabled"`
 	TelegramBotToken      string `gorm:"type:varchar(255)" json:"-"`
 	TelegramChatID        string `gorm:"type:varchar(64)" json:"telegram_chat_id"`
-	KBMaxUploadMB         int    `gorm:"default:5" json:"kb_max_upload_mb"`
+	KBMaxUploadMB            int  `gorm:"default:5" json:"kb_max_upload_mb"`
+	AllowPublicRegistration  bool `gorm:"default:true" json:"allow_public_registration"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }

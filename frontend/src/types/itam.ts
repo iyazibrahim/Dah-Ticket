@@ -126,6 +126,7 @@ export interface ITAMSettings {
   telegram_chat_id?: string;
   has_telegram_bot_token?: boolean;
   kb_max_upload_mb?: number;
+  allow_public_registration?: boolean;
 }
 
 export interface ITAMSettingsUpdate extends Partial<ITAMSettings> {

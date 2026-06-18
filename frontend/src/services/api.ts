@@ -42,7 +42,10 @@ export const authAPI = {
   register: (data: { first_name: string; last_name: string; email: string; password: string }) =>
     api.post('/auth/register', data),
 
-	getMe: () => api.get('/auth/me'),
+  getRegistrationStatus: () =>
+    api.get<{ allow_public_registration: boolean }>('/auth/registration-status'),
+
+  getMe: () => api.get('/auth/me'),
 
   updateMe: (data: { first_name?: string; last_name?: string; old_password?: string; new_password?: string }) =>
     api.put('/auth/me', data),

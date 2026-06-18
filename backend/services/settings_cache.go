@@ -37,6 +37,15 @@ func GetAppSettings() (models.ITAMSettings, error) {
 	return settings, nil
 }
 
+// IsPublicRegistrationAllowed reports whether open self-registration is permitted.
+func IsPublicRegistrationAllowed() bool {
+	settings, err := GetAppSettings()
+	if err != nil {
+		return true
+	}
+	return settings.AllowPublicRegistration
+}
+
 // InvalidateSettingsCache clears cached settings after admin updates.
 func InvalidateSettingsCache() {
 	settingsMu.Lock()

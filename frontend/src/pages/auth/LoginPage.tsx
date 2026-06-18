@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { authAPI } from '../../services/api';
 import { Ticket, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
@@ -13,8 +14,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [registrationAllowed, setRegistrationAllowed] = useState(true);
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
+  const from = (location.state as { from?: { pathname: string }; registrationDisabled?: boolean })?.from?.pathname || '/';
+  const registrationDisabled = (location.state as { registrationDisabled?: boolean })?.registrationDisabled;
+
+  useEffect(() => {
+    authAPI.getRegistrationStatus()
+      .then((res) => setRegistrationAllowed(res.data.allow_public_registration))
+      .catch(() => setRegistrationAllowed(true));
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -84,6 +93,13 @@ export default function LoginPage() {
             <p className="text-muted-foreground mt-2">Sign in to your account to continue</p>
           </div>
 
+          {registrationDisabled && (
+            <div className="mb-6 flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl text-amber-800 dark:text-amber-300 text-sm">
+              <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+              <span>Public registration is disabled. Contact an administrator to create an account.</span>
+            </div>
+          )}
+
           {error && (
             <div className="mb-6 flex items-start gap-3 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl text-red-700 dark:text-red-400 text-sm">
               <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
@@ -148,12 +164,14 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-primary font-medium hover:underline">
-              Create account
-            </Link>
-          </p>
+          {registrationAllowed && (
+            <p className="mt-8 text-center text-sm text-muted-foreground">
+              Don't have an account?{' '}
+              <Link to="/register" className="text-primary font-medium hover:underline">
+                Create account
+              </Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

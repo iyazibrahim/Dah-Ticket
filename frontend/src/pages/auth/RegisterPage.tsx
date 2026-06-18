@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { authAPI } from '../../services/api';
 import { Ticket, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -17,6 +18,18 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkingAccess, setCheckingAccess] = useState(true);
+
+  useEffect(() => {
+    authAPI.getRegistrationStatus()
+      .then((res) => {
+        if (!res.data.allow_public_registration) {
+          navigate('/login', { replace: true, state: { registrationDisabled: true } });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCheckingAccess(false));
+  }, [navigate]);
 
   const passwordChecks = [
     { label: 'At least 8 characters', valid: form.password.length >= 8 },
@@ -58,6 +71,14 @@ export default function RegisterPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (checkingAccess) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex">

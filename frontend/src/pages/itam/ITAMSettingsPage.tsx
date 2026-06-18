@@ -117,6 +117,7 @@ export default function ITAMSettingsPage() {
     telegram_enabled: false,
     telegram_chat_id: '',
     kb_max_upload_mb: 5,
+    allow_public_registration: true,
   });
   const [hasSMTPPassword, setHasSMTPPassword] = useState(false);
   const [hasTelegramToken, setHasTelegramToken] = useState(false);
@@ -244,6 +245,7 @@ export default function ITAMSettingsPage() {
         telegram_enabled: loadedSettings.telegram_enabled ?? false,
         telegram_chat_id: loadedSettings.telegram_chat_id ?? '',
         kb_max_upload_mb: loadedSettings.kb_max_upload_mb ?? 5,
+        allow_public_registration: loadedSettings.allow_public_registration ?? true,
       });
       setHasSMTPPassword(!!loadedSettings.has_smtp_password);
       setHasTelegramToken(!!loadedSettings.has_telegram_bot_token);
@@ -311,6 +313,7 @@ export default function ITAMSettingsPage() {
         support_email: settingsForm.support_email,
         timezone: settingsForm.timezone,
         kb_max_upload_mb: settingsForm.kb_max_upload_mb,
+        allow_public_registration: settingsForm.allow_public_registration,
       });
       setSettings(res.data.settings);
       showSuccess('General settings updated.');
@@ -736,10 +739,36 @@ export default function ITAMSettingsPage() {
             </div>
           </div>
 
+          <div className="bg-card border border-border rounded-xl p-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <ShieldAlert size={16} className="text-amber-400" /> Account Access
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              When public registration is off, only administrators can create user accounts from Admin → Users.
+            </p>
+            <label className="mt-3 flex items-start gap-3 p-3 rounded-lg border border-border text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={settingsForm.allow_public_registration}
+                onChange={(e) => setSettingsForm((p) => ({ ...p, allow_public_registration: e.target.checked }))}
+              />
+              <span>
+                <span className="font-medium text-foreground block">Allow public registration</span>
+                <span className="text-muted-foreground text-xs">Anyone can use the Create account page. Uncheck to restrict sign-up to admins only.</span>
+              </span>
+            </label>
+            <div className="mt-4 flex justify-end">
+              <button onClick={saveOrgSettings} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">
+                <Save size={14} /> Save Access Settings
+              </button>
+            </div>
+          </div>
+
           <details className="bg-muted/20 border border-border rounded-xl p-4 text-sm">
             <summary className="font-medium cursor-pointer">Configuration inventory</summary>
             <ul className="mt-3 space-y-1 text-muted-foreground text-xs">
-              <li>General: organisation, support email, timezone, logo, KB upload limit</li>
+              <li>General: organisation, support email, timezone, logo, KB upload limit, public registration</li>
               <li>Notifications: per-event toggles (ticket created, assigned, status, comment)</li>
               <li>Email: SMTP transport + sender identity</li>
               <li>Telegram: bot token + global chat ID</li>
