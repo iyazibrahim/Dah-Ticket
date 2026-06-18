@@ -612,6 +612,14 @@ All 12 planned steps have been significantly completed. The system includes:
   - Frontend `useLocationScope` hook; scoped users auto-filter ITAM dashboard/inventory and site inspection data to assigned location.
 - Validation: `go build ./...` pass; `npm run build` pass.
 
+## Latest Update (Jun 18, 2026 - Email + Telegram Notifications & Settings Redesign)
+
+- **Settings model/API expanded**: Email transport (enabled, SMTP host/port/user/password/from), Telegram transport (enabled, bot token, global chat ID); secrets never returned in API (`has_smtp_password`, `has_telegram_bot_token`); rotate/clear secret semantics.
+- **Notification router**: Central dispatcher for ticket created, assigned, status changed, and new public comment; gates by per-event toggles + channel enabled flags; preserves requester/assignee email recipients; Telegram posts to one global chat.
+- **Services**: `settings_cache.go`, `telegram.go`, `notification_router.go`; email service loads SMTP from DB settings with env fallback; test endpoints `POST /api/admin/itam/settings/test-email` and `test-telegram`.
+- **Settings UI** (`/admin/settings`): Six tabs — General, Notifications, Email, Telegram, ITAM, Reference Data; masked secret UX; connection test actions; configuration inventory summary.
+- Validation: `go build ./...` pass; `npm run build` pass. Live SMTP/Telegram delivery to be verified on NUC deployment.
+
 ## Latest Update (Jun 9, 2026 - Navigation, Sizing, Site Inspection UX)
 
 - **Consistent navigation**: `BackLink` component; breadcrumbs on detail pages (KB, tickets, assets, site inspection); removed duplicate back+breadcrumb combos

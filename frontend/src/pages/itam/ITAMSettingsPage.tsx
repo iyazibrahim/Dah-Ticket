@@ -14,6 +14,11 @@ import {
   Tags,
   Timer,
   Layers,
+  Mail,
+  Bell,
+  Send,
+  Building2,
+  MessageCircle,
 } from 'lucide-react';
 import { itamAPI } from '../../services/itamAPI';
 import { usePermissions } from '../../hooks/usePermissions';
@@ -24,11 +29,12 @@ import type {
   AssetStatus,
   AssetType,
   ITAMSettings,
+  ITAMSettingsUpdate,
   Location,
   Vendor,
 } from '../../types/itam';
 
-type SectionTab = 'configuration' | 'reference';
+type SettingsTab = 'general' | 'notifications' | 'email' | 'telegram' | 'itam' | 'reference';
 type RefKey = 'categories' | 'types' | 'statuses' | 'conditions' | 'locations' | 'vendors';
 type RefItem = AssetCategory | AssetType | AssetStatus | AssetCondition | Location | Vendor;
 
@@ -75,7 +81,7 @@ function buildFormFromEditor(editor: EditorState): RefFormState {
 }
 
 export default function ITAMSettingsPage() {
-  const [sectionTab, setSectionTab] = useState<SectionTab>('configuration');
+  const [sectionTab, setSectionTab] = useState<SettingsTab>('general');
   const [activeTab, setActiveTab] = useState<RefKey>('categories');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -102,8 +108,21 @@ export default function ITAMSettingsPage() {
     notify_ticket_assigned: true,
     notify_ticket_status: true,
     notify_new_comment: true,
+    email_enabled: false,
+    smtp_host: '',
+    smtp_port: '587',
+    smtp_username: '',
+    smtp_from_addr: '',
+    smtp_from_name: '',
+    telegram_enabled: false,
+    telegram_chat_id: '',
     kb_max_upload_mb: 5,
   });
+  const [hasSMTPPassword, setHasSMTPPassword] = useState(false);
+  const [hasTelegramToken, setHasTelegramToken] = useState(false);
+  const [smtpPasswordInput, setSmtpPasswordInput] = useState('');
+  const [telegramTokenInput, setTelegramTokenInput] = useState('');
+  const [testEmailTo, setTestEmailTo] = useState('');
   const [slaForm, setSlaForm] = useState({
     sla_low_hours: 72,
     sla_medium_hours: 24,
@@ -216,8 +235,20 @@ export default function ITAMSettingsPage() {
         notify_ticket_assigned: loadedSettings.notify_ticket_assigned ?? true,
         notify_ticket_status: loadedSettings.notify_ticket_status ?? true,
         notify_new_comment: loadedSettings.notify_new_comment ?? true,
+        email_enabled: loadedSettings.email_enabled ?? false,
+        smtp_host: loadedSettings.smtp_host ?? '',
+        smtp_port: loadedSettings.smtp_port ?? '587',
+        smtp_username: loadedSettings.smtp_username ?? '',
+        smtp_from_addr: loadedSettings.smtp_from_addr ?? '',
+        smtp_from_name: loadedSettings.smtp_from_name ?? '',
+        telegram_enabled: loadedSettings.telegram_enabled ?? false,
+        telegram_chat_id: loadedSettings.telegram_chat_id ?? '',
         kb_max_upload_mb: loadedSettings.kb_max_upload_mb ?? 5,
       });
+      setHasSMTPPassword(!!loadedSettings.has_smtp_password);
+      setHasTelegramToken(!!loadedSettings.has_telegram_bot_token);
+      setSmtpPasswordInput('');
+      setTelegramTokenInput('');
       setSlaForm({
         sla_low_hours: loadedSettings.sla_low_hours,
         sla_medium_hours: loadedSettings.sla_medium_hours,
@@ -279,18 +310,150 @@ export default function ITAMSettingsPage() {
         logo_base64: settingsForm.logo_base64,
         support_email: settingsForm.support_email,
         timezone: settingsForm.timezone,
-        email_sender_name: settingsForm.email_sender_name,
+        kb_max_upload_mb: settingsForm.kb_max_upload_mb,
+      });
+      setSettings(res.data.settings);
+      showSuccess('General settings updated.');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setError(apiErr.response?.data?.error || 'Failed to update general settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveNotificationSettings = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await itamAPI.updateSettings({
         notify_ticket_created: settingsForm.notify_ticket_created,
         notify_ticket_assigned: settingsForm.notify_ticket_assigned,
         notify_ticket_status: settingsForm.notify_ticket_status,
         notify_new_comment: settingsForm.notify_new_comment,
-        kb_max_upload_mb: settingsForm.kb_max_upload_mb,
       });
       setSettings(res.data.settings);
-      showSuccess('System settings updated.');
+      showSuccess('Notification preferences updated.');
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { error?: string } } };
-      setError(apiErr.response?.data?.error || 'Failed to update organisation settings.');
+      setError(apiErr.response?.data?.error || 'Failed to update notification settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveEmailSettings = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const payload: ITAMSettingsUpdate = {
+        email_enabled: settingsForm.email_enabled,
+        email_sender_name: settingsForm.email_sender_name,
+        smtp_host: settingsForm.smtp_host,
+        smtp_port: settingsForm.smtp_port,
+        smtp_username: settingsForm.smtp_username,
+        smtp_from_addr: settingsForm.smtp_from_addr,
+        smtp_from_name: settingsForm.smtp_from_name,
+      };
+      if (smtpPasswordInput.trim()) {
+        payload.smtp_password = smtpPasswordInput.trim();
+      }
+      const res = await itamAPI.updateSettings(payload);
+      setSettings(res.data.settings);
+      setHasSMTPPassword(!!res.data.settings.has_smtp_password);
+      setSmtpPasswordInput('');
+      showSuccess('Email settings updated.');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setError(apiErr.response?.data?.error || 'Failed to update email settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearSMTPPassword = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await itamAPI.updateSettings({ clear_smtp_password: true });
+      setHasSMTPPassword(!!res.data.settings.has_smtp_password);
+      setSmtpPasswordInput('');
+      showSuccess('SMTP password cleared.');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setError(apiErr.response?.data?.error || 'Failed to clear SMTP password.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveTelegramSettings = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const payload: ITAMSettingsUpdate = {
+        telegram_enabled: settingsForm.telegram_enabled,
+        telegram_chat_id: settingsForm.telegram_chat_id,
+      };
+      if (telegramTokenInput.trim()) {
+        payload.telegram_bot_token = telegramTokenInput.trim();
+      }
+      const res = await itamAPI.updateSettings(payload);
+      setSettings(res.data.settings);
+      setHasTelegramToken(!!res.data.settings.has_telegram_bot_token);
+      setTelegramTokenInput('');
+      showSuccess('Telegram settings updated.');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setError(apiErr.response?.data?.error || 'Failed to update Telegram settings.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearTelegramToken = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await itamAPI.updateSettings({ clear_telegram_bot_token: true });
+      setHasTelegramToken(!!res.data.settings.has_telegram_bot_token);
+      setTelegramTokenInput('');
+      showSuccess('Telegram bot token cleared.');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setError(apiErr.response?.data?.error || 'Failed to clear Telegram token.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendTestEmail = async () => {
+    if (!testEmailTo.trim()) {
+      setError('Enter a test recipient email address.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await itamAPI.testEmailSettings(testEmailTo.trim());
+      showSuccess('Test email sent.');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setError(apiErr.response?.data?.error || 'Test email failed.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendTestTelegram = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await itamAPI.testTelegramSettings();
+      showSuccess('Test Telegram message sent.');
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { error?: string } } };
+      setError(apiErr.response?.data?.error || 'Test Telegram failed.');
     } finally {
       setSaving(false);
     }
@@ -482,7 +645,7 @@ export default function ITAMSettingsPage() {
             Settings
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Manage ITAM configuration, SLA values, and reference data.
+            System configuration, notifications, ITAM, and reference data.
           </p>
         </div>
       </div>
@@ -499,26 +662,189 @@ export default function ITAMSettingsPage() {
         </div>
       )}
 
-      <div className="bg-card border border-border rounded-2xl p-2 grid grid-cols-2 gap-2">
-        <button
-          onClick={() => setSectionTab('configuration')}
-          className={`px-3 py-2 rounded-lg text-sm transition-colors inline-flex items-center justify-center gap-2 ${
-            sectionTab === 'configuration' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <Timer size={14} /> Configuration
-        </button>
-        <button
-          onClick={() => setSectionTab('reference')}
-          className={`px-3 py-2 rounded-lg text-sm transition-colors inline-flex items-center justify-center gap-2 ${
-            sectionTab === 'reference' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <Layers size={14} /> Reference Data
-        </button>
+      <div className="bg-card border border-border rounded-2xl p-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+        {([
+          ['general', 'General', Building2],
+          ['notifications', 'Notifications', Bell],
+          ['email', 'Email', Mail],
+          ['telegram', 'Telegram', MessageCircle],
+          ['itam', 'ITAM', Timer],
+          ['reference', 'Reference', Layers],
+        ] as const).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            onClick={() => setSectionTab(key)}
+            className={`px-2 py-2 rounded-lg text-xs sm:text-sm transition-colors inline-flex items-center justify-center gap-1.5 ${
+              sectionTab === key ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        ))}
       </div>
 
-      {sectionTab === 'configuration' && (
+      {sectionTab === 'general' && (
+        <div className="space-y-4">
+          <div className="bg-card border border-border rounded-xl p-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Building2 size={16} className="text-purple-400" /> Organisation &amp; Branding
+            </h3>
+            <div className="space-y-3 mt-3">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Organisation Name</label>
+                <input value={settingsForm.organization_name} onChange={(e) => setSettingsForm((p) => ({ ...p, organization_name: e.target.value }))}
+                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" placeholder="e.g. Digital Penang" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">Support Email</label>
+                  <input value={settingsForm.support_email} onChange={(e) => setSettingsForm((p) => ({ ...p, support_email: e.target.value }))}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">Timezone</label>
+                  <input value={settingsForm.timezone} onChange={(e) => setSettingsForm((p) => ({ ...p, timezone: e.target.value }))}
+                    className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Logo</label>
+                {settingsForm.logo_base64 && (
+                  <div className="mb-2 flex items-center gap-3">
+                    <img src={settingsForm.logo_base64} alt="Logo" className="h-12 max-w-[160px] object-contain rounded border border-border p-1" />
+                    <button type="button" onClick={() => setSettingsForm((p) => ({ ...p, logo_base64: '' }))} className="text-xs text-rose-400">Remove</button>
+                  </div>
+                )}
+                <input type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0]; if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => { if (typeof ev.target?.result === 'string') setSettingsForm((p) => ({ ...p, logo_base64: ev.target!.result as string })); };
+                  reader.readAsDataURL(file); e.target.value = '';
+                }} className="text-sm text-muted-foreground" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">KB max upload (MB)</label>
+                <input type="number" min={1} value={settingsForm.kb_max_upload_mb}
+                  onChange={(e) => setSettingsForm((p) => ({ ...p, kb_max_upload_mb: Number(e.target.value) }))}
+                  className="w-full max-w-xs px-3 py-2 bg-background border border-border rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={saveOrgSettings} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">
+                <Save size={14} /> Save General
+              </button>
+            </div>
+          </div>
+
+          <details className="bg-muted/20 border border-border rounded-xl p-4 text-sm">
+            <summary className="font-medium cursor-pointer">Configuration inventory</summary>
+            <ul className="mt-3 space-y-1 text-muted-foreground text-xs">
+              <li>General: organisation, support email, timezone, logo, KB upload limit</li>
+              <li>Notifications: per-event toggles (ticket created, assigned, status, comment)</li>
+              <li>Email: SMTP transport + sender identity</li>
+              <li>Telegram: bot token + global chat ID</li>
+              <li>ITAM: SLA hours, asset tag rules</li>
+              <li>Reference: categories, types, statuses, locations, vendors</li>
+            </ul>
+          </details>
+        </div>
+      )}
+
+      {sectionTab === 'notifications' && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          <div>
+            <h3 className="font-semibold text-foreground flex items-center gap-2"><Bell size={16} /> Event Notifications</h3>
+            <p className="text-sm text-muted-foreground mt-1">Choose which ticket events trigger email and Telegram alerts.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            {([
+              ['notify_ticket_created', 'Ticket created'],
+              ['notify_ticket_assigned', 'Ticket assigned'],
+              ['notify_ticket_status', 'Status changes'],
+              ['notify_new_comment', 'New comments'],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 p-2 rounded-lg border border-border">
+                <input type="checkbox" checked={settingsForm[key]} onChange={(e) => setSettingsForm((p) => ({ ...p, [key]: e.target.checked }))} />
+                {label}
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end">
+            <button onClick={saveNotificationSettings} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">
+              <Save size={14} /> Save Notifications
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sectionTab === 'email' && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2"><Mail size={16} /> Email (SMTP)</h3>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={settingsForm.email_enabled} onChange={(e) => setSettingsForm((p) => ({ ...p, email_enabled: e.target.checked }))} />
+              Enabled
+            </label>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className="block text-xs text-muted-foreground mb-1">SMTP Host</label>
+              <input value={settingsForm.smtp_host} onChange={(e) => setSettingsForm((p) => ({ ...p, smtp_host: e.target.value }))} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" placeholder="smtp.office365.com" /></div>
+            <div><label className="block text-xs text-muted-foreground mb-1">SMTP Port</label>
+              <input value={settingsForm.smtp_port} onChange={(e) => setSettingsForm((p) => ({ ...p, smtp_port: e.target.value }))} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" /></div>
+            <div><label className="block text-xs text-muted-foreground mb-1">Username</label>
+              <input value={settingsForm.smtp_username} onChange={(e) => setSettingsForm((p) => ({ ...p, smtp_username: e.target.value }))} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" /></div>
+            <div><label className="block text-xs text-muted-foreground mb-1">Password {hasSMTPPassword && <span className="text-emerald-500">(saved)</span>}</label>
+              <input type="password" value={smtpPasswordInput} onChange={(e) => setSmtpPasswordInput(e.target.value)} placeholder={hasSMTPPassword ? '••••••••' : 'Enter SMTP password'}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" /></div>
+            <div><label className="block text-xs text-muted-foreground mb-1">From Address</label>
+              <input value={settingsForm.smtp_from_addr} onChange={(e) => setSettingsForm((p) => ({ ...p, smtp_from_addr: e.target.value }))} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" /></div>
+            <div><label className="block text-xs text-muted-foreground mb-1">From Name</label>
+              <input value={settingsForm.smtp_from_name || settingsForm.email_sender_name} onChange={(e) => setSettingsForm((p) => ({ ...p, smtp_from_name: e.target.value, email_sender_name: e.target.value }))} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" /></div>
+          </div>
+          <div className="flex flex-wrap gap-2 justify-between items-center pt-2 border-t border-border">
+            <div className="flex gap-2 flex-1 min-w-[200px]">
+              <input value={testEmailTo} onChange={(e) => setTestEmailTo(e.target.value)} placeholder="test@example.com" className="flex-1 px-3 py-2 bg-background border border-border rounded-lg text-sm" />
+              <button onClick={sendTestEmail} disabled={saving} className="inline-flex items-center gap-1 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted"><Send size={14} /> Test</button>
+            </div>
+            <div className="flex gap-2">
+              {hasSMTPPassword && <button onClick={clearSMTPPassword} disabled={saving} className="px-3 py-2 text-xs border border-border rounded-lg">Clear password</button>}
+              <button onClick={saveEmailSettings} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"><Save size={14} /> Save Email</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sectionTab === 'telegram' && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-semibold text-foreground flex items-center gap-2"><MessageCircle size={16} /> Telegram Bot</h3>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={settingsForm.telegram_enabled} onChange={(e) => setSettingsForm((p) => ({ ...p, telegram_enabled: e.target.checked }))} />
+              Enabled
+            </label>
+          </div>
+          <p className="text-sm text-muted-foreground">Alerts post to one global chat/channel for all enabled ticket events.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-muted-foreground mb-1">Bot Token {hasTelegramToken && <span className="text-emerald-500">(saved)</span>}</label>
+              <input type="password" value={telegramTokenInput} onChange={(e) => setTelegramTokenInput(e.target.value)} placeholder={hasTelegramToken ? '••••••••' : '123456:ABC...'}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs text-muted-foreground mb-1">Chat ID</label>
+              <input value={settingsForm.telegram_chat_id} onChange={(e) => setSettingsForm((p) => ({ ...p, telegram_chat_id: e.target.value }))} placeholder="-1001234567890"
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm" />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-border">
+            <button onClick={sendTestTelegram} disabled={saving} className="inline-flex items-center gap-1 px-3 py-2 border border-border rounded-lg text-sm hover:bg-muted"><Send size={14} /> Send Test</button>
+            {hasTelegramToken && <button onClick={clearTelegramToken} disabled={saving} className="px-3 py-2 text-xs border border-border rounded-lg">Clear token</button>}
+            <button onClick={saveTelegramSettings} disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"><Save size={14} /> Save Telegram</button>
+          </div>
+        </div>
+      )}
+
+      {sectionTab === 'itam' && (
         <div className="space-y-4">
           <div className="bg-card border border-border rounded-2xl p-4">
             <h3 className="text-foreground font-semibold flex items-center gap-2">
@@ -616,132 +942,6 @@ export default function ITAMSettingsPage() {
                 Current pattern preview: {settings.asset_tag_prefix}-0001
               </p>
             )}
-          </div>
-
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <h3 className="text-foreground font-semibold flex items-center gap-2">
-              <Settings2 size={16} className="text-purple-400" /> Organisation &amp; Branding
-            </h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Organisation name and logo appear in exported site inspection report PDFs.
-            </p>
-            <div className="space-y-3 mt-3">
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Organisation Name</label>
-                <input
-                  value={settingsForm.organization_name}
-                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, organization_name: e.target.value }))}
-                  placeholder="e.g. Digital Penang"
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Support Email</label>
-                <input
-                  value={settingsForm.support_email}
-                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, support_email: e.target.value }))}
-                  placeholder="support@company.com"
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Timezone</label>
-                <input
-                  value={settingsForm.timezone}
-                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, timezone: e.target.value }))}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Logo</label>
-                {settingsForm.logo_base64 && (
-                  <div className="mb-2 flex items-center gap-3">
-                    <img
-                      src={settingsForm.logo_base64}
-                      alt="Organisation logo"
-                      className="h-12 max-w-[160px] object-contain rounded border border-border bg-background p-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSettingsForm((prev) => ({ ...prev, logo_base64: '' }))}
-                      className="text-xs text-rose-400 hover:text-rose-300 transition-colors"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                      const result = ev.target?.result;
-                      if (typeof result === 'string') {
-                        setSettingsForm((prev) => ({ ...prev, logo_base64: result }));
-                      }
-                    };
-                    reader.readAsDataURL(file);
-                    e.target.value = '';
-                  }}
-                  className="text-sm text-muted-foreground file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-border file:text-xs file:text-foreground file:bg-background hover:file:bg-muted cursor-pointer"
-                />
-                <p className="text-[11px] text-muted-foreground mt-1">Recommended: PNG/SVG, max ~300 KB</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-card border border-border rounded-2xl p-5">
-            <h3 className="font-semibold text-foreground">Notifications & Knowledge Base</h3>
-            <p className="text-sm text-muted-foreground mt-1">Control email notification types and KB upload limits.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-sm">
-              {([
-                ['notify_ticket_created', 'Ticket created'],
-                ['notify_ticket_assigned', 'Ticket assigned'],
-                ['notify_ticket_status', 'Status changes'],
-                ['notify_new_comment', 'New comments'],
-              ] as const).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={settingsForm[key]}
-                    onChange={(e) => setSettingsForm((prev) => ({ ...prev, [key]: e.target.checked }))}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">Email sender display name</label>
-                <input
-                  value={settingsForm.email_sender_name}
-                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, email_sender_name: e.target.value }))}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1">KB max upload (MB)</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={settingsForm.kb_max_upload_mb}
-                  onChange={(e) => setSettingsForm((prev) => ({ ...prev, kb_max_upload_mb: Number(e.target.value) }))}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm"
-                />
-              </div>
-            </div>
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={saveOrgSettings}
-                disabled={saving}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm disabled:opacity-50"
-              >
-                <Save size={14} /> Save System Settings
-              </button>
-            </div>
           </div>
 
         </div>

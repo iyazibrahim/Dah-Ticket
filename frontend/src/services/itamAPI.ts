@@ -13,6 +13,7 @@ import type {
   CreateAssetPayload,
   UpdateAssetPayload,
   ITAMSettings,
+  ITAMSettingsUpdate,
   QRResolveResponse,
   ImportPreviewResponse,
   ImportPreviewOptions,
@@ -133,8 +134,14 @@ export const itamAPI = {
   getSettings: (): Promise<{ data: { settings: ITAMSettings } }> =>
     api.get('/admin/itam/settings'),
 
-  updateSettings: (data: Partial<ITAMSettings>): Promise<{ data: { settings: ITAMSettings } }> =>
+  updateSettings: (data: ITAMSettingsUpdate): Promise<{ data: { settings: ITAMSettings } }> =>
     api.put('/admin/itam/settings', data),
+
+  testEmailSettings: (to: string): Promise<{ data: { message: string } }> =>
+    api.post('/admin/itam/settings/test-email', { to }),
+
+  testTelegramSettings: (): Promise<{ data: { message: string } }> =>
+    api.post('/admin/itam/settings/test-telegram'),
 
   // Admin bulk operations
   downloadTemplate: () => api.get('/admin/itam/assets/template', { responseType: 'blob' }),

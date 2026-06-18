@@ -19,7 +19,17 @@ type ITAMSettings struct {
 	NotifyTicketAssigned  bool `gorm:"default:true" json:"notify_ticket_assigned"`
 	NotifyTicketStatus    bool `gorm:"default:true" json:"notify_ticket_status"`
 	NotifyNewComment      bool `gorm:"default:true" json:"notify_new_comment"`
+	EmailEnabled          bool `gorm:"default:false" json:"email_enabled"`
 	EmailSenderName       string `gorm:"type:varchar(120)" json:"email_sender_name"`
+	SMTPHost              string `gorm:"type:varchar(255)" json:"smtp_host"`
+	SMTPPort              string `gorm:"type:varchar(10);default:'587'" json:"smtp_port"`
+	SMTPUsername          string `gorm:"type:varchar(255)" json:"smtp_username"`
+	SMTPPassword          string `gorm:"type:varchar(255)" json:"-"`
+	SMTPFromAddr          string `gorm:"type:varchar(255)" json:"smtp_from_addr"`
+	SMTPFromName          string `gorm:"type:varchar(120)" json:"smtp_from_name"`
+	TelegramEnabled       bool `gorm:"default:false" json:"telegram_enabled"`
+	TelegramBotToken      string `gorm:"type:varchar(255)" json:"-"`
+	TelegramChatID        string `gorm:"type:varchar(64)" json:"telegram_chat_id"`
 	KBMaxUploadMB         int    `gorm:"default:5" json:"kb_max_upload_mb"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

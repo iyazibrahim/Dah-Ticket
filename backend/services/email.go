@@ -21,8 +21,43 @@ type EmailConfig struct {
 
 var emailConfig EmailConfig
 
-// InitEmail loads SMTP configuration from environment variables.
+// InitEmail loads SMTP configuration from environment variables (bootstrap fallback).
 func InitEmail() {
+	RefreshEmailConfig()
+}
+
+// RefreshEmailConfig reloads email transport from DB settings, falling back to env.
+func RefreshEmailConfig() {
+	settings, err := GetAppSettings()
+	if err == nil && settings.EmailEnabled && strings.TrimSpace(settings.SMTPHost) != "" {
+		fromName := strings.TrimSpace(settings.SMTPFromName)
+		if fromName == "" {
+			fromName = strings.TrimSpace(settings.EmailSenderName)
+		}
+		if fromName == "" {
+			fromName = "DahTicket IT Support"
+		}
+		fromAddr := strings.TrimSpace(settings.SMTPFromAddr)
+		if fromAddr == "" {
+			fromAddr = getEnvDefault("SMTP_FROM_ADDR", "noreply@dahticket.com")
+		}
+		port := strings.TrimSpace(settings.SMTPPort)
+		if port == "" {
+			port = "587"
+		}
+		emailConfig = EmailConfig{
+			Host:     strings.TrimSpace(settings.SMTPHost),
+			Port:     port,
+			Username: strings.TrimSpace(settings.SMTPUsername),
+			Password: settings.SMTPPassword,
+			FromName: fromName,
+			FromAddr: fromAddr,
+			Enabled:  true,
+		}
+		log.Printf("Email notifications enabled from DB settings (SMTP: %s:%s)", emailConfig.Host, emailConfig.Port)
+		return
+	}
+
 	emailConfig = EmailConfig{
 		Host:     os.Getenv("SMTP_HOST"),
 		Port:     getEnvDefault("SMTP_PORT", "587"),
@@ -32,18 +67,32 @@ func InitEmail() {
 		FromAddr: getEnvDefault("SMTP_FROM_ADDR", "noreply@dahticket.com"),
 		Enabled:  os.Getenv("SMTP_HOST") != "",
 	}
-
 	if emailConfig.Enabled {
-		log.Printf("Email notifications enabled (SMTP: %s:%s)", emailConfig.Host, emailConfig.Port)
+		log.Printf("Email notifications enabled from env (SMTP: %s:%s)", emailConfig.Host, emailConfig.Port)
 	} else {
-		log.Println("Email notifications disabled (SMTP_HOST not configured)")
+		log.Println("Email notifications disabled (configure in Settings or SMTP_HOST env)")
 	}
+}
+
+func isEmailChannelEnabled() bool {
+	settings, err := GetAppSettings()
+	if err != nil {
+		return emailConfig.Enabled
+	}
+	if settings.EmailEnabled {
+		return emailConfig.Enabled || strings.TrimSpace(settings.SMTPHost) != ""
+	}
+	return false
 }
 
 // SendEmail sends an email via SMTP. Runs asynchronously — does not block the caller.
 func SendEmail(to []string, subject, htmlBody string) {
-	if !emailConfig.Enabled {
+	if !isEmailChannelEnabled() {
 		log.Printf("[EMAIL SKIPPED] To: %s | Subject: %s", strings.Join(to, ", "), subject)
+		return
+	}
+	if len(to) == 0 || strings.TrimSpace(to[0]) == "" {
+		log.Printf("[EMAIL SKIPPED] no recipient | Subject: %s", subject)
 		return
 	}
 
@@ -68,58 +117,43 @@ func SendEmail(to []string, subject, htmlBody string) {
 	}()
 }
 
+// SendEmailSync sends email synchronously (for admin test).
+func SendEmailSync(to, subject, htmlBody string) error {
+	if !isEmailChannelEnabled() {
+		return fmt.Errorf("email channel is not enabled or configured")
+	}
+	auth := smtp.PlainAuth("", emailConfig.Username, emailConfig.Password, emailConfig.Host)
+	headers := fmt.Sprintf("From: %s <%s>\r\n", emailConfig.FromName, emailConfig.FromAddr)
+	headers += fmt.Sprintf("To: %s\r\n", to)
+	headers += fmt.Sprintf("Subject: %s\r\n", subject)
+	headers += "MIME-Version: 1.0\r\n"
+	headers += "Content-Type: text/html; charset=\"UTF-8\"\r\n"
+	headers += "\r\n"
+	msg := []byte(headers + htmlBody)
+	addr := fmt.Sprintf("%s:%s", emailConfig.Host, emailConfig.Port)
+	return smtp.SendMail(addr, auth, emailConfig.FromAddr, []string{to}, msg)
+}
+
 // --- Notification Templates ---
 
 // NotifyTicketCreated sends notification when a new ticket is created.
 func NotifyTicketCreated(requesterEmail, requesterName string, ticketID uint, ticketTitle string) {
-	subject := fmt.Sprintf("[DahTicket #%d] Ticket Created: %s", ticketID, ticketTitle)
-	body := buildEmailTemplate(
-		"Ticket Created",
-		fmt.Sprintf("Hi %s,", requesterName),
-		fmt.Sprintf("Your ticket <strong>#%d</strong> has been created successfully.", ticketID),
-		fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Status:</strong> Open", ticketTitle),
-		"Our IT team will review your ticket shortly.",
-	)
-	SendEmail([]string{requesterEmail}, subject, body)
+	DispatchTicketCreated(requesterEmail, requesterName, ticketID, ticketTitle)
 }
 
 // NotifyTicketAssigned sends notification when a ticket is assigned.
 func NotifyTicketAssigned(assigneeEmail, assigneeName string, ticketID uint, ticketTitle string) {
-	subject := fmt.Sprintf("[DahTicket #%d] Ticket Assigned to You", ticketID)
-	body := buildEmailTemplate(
-		"Ticket Assigned",
-		fmt.Sprintf("Hi %s,", assigneeName),
-		fmt.Sprintf("Ticket <strong>#%d</strong> has been assigned to you.", ticketID),
-		fmt.Sprintf("<strong>Title:</strong> %s", ticketTitle),
-		"Please review and begin working on this ticket.",
-	)
-	SendEmail([]string{assigneeEmail}, subject, body)
+	DispatchTicketAssigned(assigneeEmail, assigneeName, ticketID, ticketTitle)
 }
 
 // NotifyTicketStatusChanged sends notification when ticket status changes.
 func NotifyTicketStatusChanged(recipientEmail, recipientName string, ticketID uint, ticketTitle, oldStatus, newStatus string) {
-	subject := fmt.Sprintf("[DahTicket #%d] Status Updated: %s → %s", ticketID, oldStatus, newStatus)
-	body := buildEmailTemplate(
-		"Ticket Status Updated",
-		fmt.Sprintf("Hi %s,", recipientName),
-		fmt.Sprintf("The status of ticket <strong>#%d</strong> has been updated.", ticketID),
-		fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Status:</strong> %s → %s", ticketTitle, oldStatus, newStatus),
-		"",
-	)
-	SendEmail([]string{recipientEmail}, subject, body)
+	DispatchTicketStatusChanged(recipientEmail, recipientName, ticketID, ticketTitle, oldStatus, newStatus)
 }
 
 // NotifyNewComment sends notification when a public comment is added.
 func NotifyNewComment(recipientEmail, recipientName string, ticketID uint, ticketTitle, commenterName string) {
-	subject := fmt.Sprintf("[DahTicket #%d] New Comment from %s", ticketID, commenterName)
-	body := buildEmailTemplate(
-		"New Comment",
-		fmt.Sprintf("Hi %s,", recipientName),
-		fmt.Sprintf("%s added a comment on ticket <strong>#%d</strong>.", commenterName, ticketID),
-		fmt.Sprintf("<strong>Title:</strong> %s", ticketTitle),
-		"Log in to DahTicket to view the full comment.",
-	)
-	SendEmail([]string{recipientEmail}, subject, body)
+	DispatchNewComment(recipientEmail, recipientName, ticketID, ticketTitle, commenterName)
 }
 
 // buildEmailTemplate creates a clean, branded HTML email.
@@ -169,4 +203,15 @@ func getEnvDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// BuildTestEmailBody returns HTML for admin test sends.
+func BuildTestEmailBody() string {
+	return buildEmailTemplate(
+		"Test Email",
+		"Hi Admin,",
+		"This is a test message from DahTicket notification settings.",
+		"<strong>Status:</strong> SMTP configuration is working.",
+		"You can safely ignore this email.",
+	)
 }

@@ -61,8 +61,9 @@ func main() {
 	database.SeedITAMDefaults()
 	database.SyncSLATargetsFromDB()
 
-	// Initialize email notification service
+	// Initialize email notification service (env fallback, then DB override)
 	services.InitEmail()
+	services.InvalidateSettingsCache()
 
 	// Initialize Gin router
 	r := gin.Default()
@@ -261,6 +262,8 @@ func main() {
 			// ITAM settings and bulk operations
 			itamRef.GET("/settings", handlers.GetITAMSettings)
 			itamRef.PUT("/settings", handlers.UpdateITAMSettings)
+			itamRef.POST("/settings/test-email", handlers.TestEmailSettings)
+			itamRef.POST("/settings/test-telegram", handlers.TestTelegramSettings)
 			itamRef.GET("/assets/template", handlers.DownloadAssetImportTemplate)
 			itamRef.POST("/assets/import/preview", handlers.PreviewImportAssets)
 			itamRef.POST("/assets/import/commit", handlers.CommitImportAssets)

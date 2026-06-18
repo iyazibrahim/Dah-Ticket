@@ -114,8 +114,25 @@ export interface ITAMSettings {
   notify_ticket_assigned?: boolean;
   notify_ticket_status?: boolean;
   notify_new_comment?: boolean;
+  email_enabled?: boolean;
   email_sender_name?: string;
+  smtp_host?: string;
+  smtp_port?: string;
+  smtp_username?: string;
+  smtp_from_addr?: string;
+  smtp_from_name?: string;
+  has_smtp_password?: boolean;
+  telegram_enabled?: boolean;
+  telegram_chat_id?: string;
+  has_telegram_bot_token?: boolean;
   kb_max_upload_mb?: number;
+}
+
+export interface ITAMSettingsUpdate extends Partial<ITAMSettings> {
+  smtp_password?: string;
+  clear_smtp_password?: boolean;
+  telegram_bot_token?: string;
+  clear_telegram_bot_token?: boolean;
 }
 
 export interface PMFailureLog {

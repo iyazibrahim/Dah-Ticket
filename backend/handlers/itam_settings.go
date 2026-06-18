@@ -8,11 +8,30 @@ import (
 	"dahticket-backend/config"
 	"dahticket-backend/database"
 	"dahticket-backend/models"
+	"dahticket-backend/services"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+type ITAMSettingsPublic struct {
+	models.ITAMSettings
+	HasSMTPPassword      bool `json:"has_smtp_password"`
+	HasTelegramBotToken  bool `json:"has_telegram_bot_token"`
+}
+
+func toPublicSettings(s models.ITAMSettings) ITAMSettingsPublic {
+	hasPwd := strings.TrimSpace(s.SMTPPassword) != ""
+	hasToken := strings.TrimSpace(s.TelegramBotToken) != ""
+	s.SMTPPassword = ""
+	s.TelegramBotToken = ""
+	return ITAMSettingsPublic{
+		ITAMSettings:        s,
+		HasSMTPPassword:     hasPwd,
+		HasTelegramBotToken: hasToken,
+	}
+}
 
 type UpdateITAMSettingsRequest struct {
 	AssetTagPrefix   *string `json:"asset_tag_prefix"`
@@ -29,8 +48,24 @@ type UpdateITAMSettingsRequest struct {
 	NotifyTicketAssigned *bool   `json:"notify_ticket_assigned"`
 	NotifyTicketStatus   *bool   `json:"notify_ticket_status"`
 	NotifyNewComment     *bool   `json:"notify_new_comment"`
+	EmailEnabled         *bool   `json:"email_enabled"`
 	EmailSenderName      *string `json:"email_sender_name"`
+	SMTPHost             *string `json:"smtp_host"`
+	SMTPPort             *string `json:"smtp_port"`
+	SMTPUsername         *string `json:"smtp_username"`
+	SMTPPassword         *string `json:"smtp_password"`
+	ClearSMTPPassword    *bool   `json:"clear_smtp_password"`
+	SMTPFromAddr         *string `json:"smtp_from_addr"`
+	SMTPFromName         *string `json:"smtp_from_name"`
+	TelegramEnabled      *bool   `json:"telegram_enabled"`
+	TelegramChatID       *string `json:"telegram_chat_id"`
+	TelegramBotToken     *string `json:"telegram_bot_token"`
+	ClearTelegramBotToken *bool  `json:"clear_telegram_bot_token"`
 	KBMaxUploadMB        *int    `json:"kb_max_upload_mb"`
+}
+
+type TestEmailRequest struct {
+	To string `json:"to" binding:"required,email"`
 }
 
 func getOrCreateITAMSettings(tx *gorm.DB) (models.ITAMSettings, error) {
@@ -199,7 +234,31 @@ func GetITAMSettings(c *gin.Context) {
 			return
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"settings": settings})
+	c.JSON(http.StatusOK, gin.H{"settings": toPublicSettings(settings)})
+}
+
+func TestEmailSettings(c *gin.Context) {
+	var req TestEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	services.InvalidateSettingsCache()
+	body := services.BuildTestEmailBody()
+	if err := services.SendEmailSync(req.To, "DahTicket Test Email", body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Test email sent"})
+}
+
+func TestTelegramSettings(c *gin.Context) {
+	services.InvalidateSettingsCache()
+	if err := services.SendTelegramTest(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Test Telegram message sent"})
 }
 
 func UpdateITAMSettings(c *gin.Context) {
@@ -298,6 +357,42 @@ func UpdateITAMSettings(c *gin.Context) {
 	if req.EmailSenderName != nil {
 		settings.EmailSenderName = strings.TrimSpace(*req.EmailSenderName)
 	}
+	if req.EmailEnabled != nil {
+		settings.EmailEnabled = *req.EmailEnabled
+	}
+	if req.SMTPHost != nil {
+		settings.SMTPHost = strings.TrimSpace(*req.SMTPHost)
+	}
+	if req.SMTPPort != nil {
+		settings.SMTPPort = strings.TrimSpace(*req.SMTPPort)
+	}
+	if req.SMTPUsername != nil {
+		settings.SMTPUsername = strings.TrimSpace(*req.SMTPUsername)
+	}
+	if req.ClearSMTPPassword != nil && *req.ClearSMTPPassword {
+		settings.SMTPPassword = ""
+	}
+	if req.SMTPPassword != nil && strings.TrimSpace(*req.SMTPPassword) != "" {
+		settings.SMTPPassword = strings.TrimSpace(*req.SMTPPassword)
+	}
+	if req.SMTPFromAddr != nil {
+		settings.SMTPFromAddr = strings.TrimSpace(*req.SMTPFromAddr)
+	}
+	if req.SMTPFromName != nil {
+		settings.SMTPFromName = strings.TrimSpace(*req.SMTPFromName)
+	}
+	if req.TelegramEnabled != nil {
+		settings.TelegramEnabled = *req.TelegramEnabled
+	}
+	if req.TelegramChatID != nil {
+		settings.TelegramChatID = strings.TrimSpace(*req.TelegramChatID)
+	}
+	if req.ClearTelegramBotToken != nil && *req.ClearTelegramBotToken {
+		settings.TelegramBotToken = ""
+	}
+	if req.TelegramBotToken != nil && strings.TrimSpace(*req.TelegramBotToken) != "" {
+		settings.TelegramBotToken = strings.TrimSpace(*req.TelegramBotToken)
+	}
 	if req.KBMaxUploadMB != nil && *req.KBMaxUploadMB > 0 {
 		settings.KBMaxUploadMB = *req.KBMaxUploadMB
 	}
@@ -314,5 +409,7 @@ func UpdateITAMSettings(c *gin.Context) {
 		settings.SLACriticalHours,
 	)
 
-	c.JSON(http.StatusOK, gin.H{"settings": settings})
+	services.InvalidateSettingsCache()
+
+	c.JSON(http.StatusOK, gin.H{"settings": toPublicSettings(settings)})
 }
