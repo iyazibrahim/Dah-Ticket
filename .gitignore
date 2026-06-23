@@ -1,34 +1,69 @@
-# Environment Variables & Secrets
+# =============================================================================
+# Secrets & environment (keep *.example templates)
+# =============================================================================
 .env
-.env.local
-.env.*.local
-.env.production
-.env.development
-.env.test
+.env.*
+!.env.example
+!**/.env.example
 *.key
 *.pem
+*.p12
+secrets/
+credentials.json
+credentials*.json
 
-# IDE & Editor Files
+# =============================================================================
+# AI / Cursor / agent tooling (local dev only)
+# =============================================================================
 .cursor/
+**/.cursor/
+.cursorrules
+*.cursorrules
+.agents/
+AGENTS.md
+agent-transcripts/
+**/agent-transcripts/
+
+# =============================================================================
+# Internal workflow & dev checklists (not for public repo)
+# =============================================================================
+WORKFLOW_STATE.md
+workflow.md
+WORKFLOW.md
+PREPUSH.md
+*.plan.md
+
+# =============================================================================
+# IDE & editors
+# =============================================================================
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
-.editorconfig
 *.sublime-project
 *.sublime-workspace
 .vim/
 .nvim/
 
-# OS Specific
+# =============================================================================
+# OS files
+# =============================================================================
+.DS_Store
 Thumbs.db
-.Thumbs.db
 Desktop.ini
 .directory
 
-# Build Artifacts & Distribution
+# =============================================================================
+# Dependencies
+# =============================================================================
+node_modules/
+vendor/
+
+# =============================================================================
+# Build & distribution
+# =============================================================================
 dist/
 build/
 *.out
@@ -36,60 +71,67 @@ build/
 *.dll
 *.so
 *.dylib
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/dist-ssr/
+backend/bin/
+backend/.build/
 
-# Dependencies
-node_modules/
-vendor/
-go.mod.bak
-
-# Logs
+# =============================================================================
+# Logs, cache, test output
+# =============================================================================
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 lerna-debug.log*
-
-# Docker
-docker-compose.override.yml
-.docker/
-
-# Database & Temporary Files
-*.db
-*.sqlite
-*.sqlite3
-pgdata/
-postgres_data/
-tmp/
-temp/
-
-# Coverage & Test Reports
+.cache/
+.turbo/
+.eslintcache
 coverage/
 .nyc_output/
 *.lcov
 .coverage
+.testcache
 
-# Misc
-.DS_Store
-*.pem
-*.p12
-.cache/
-.turbo/
+# =============================================================================
+# Docker (local overrides only)
+# =============================================================================
+docker-compose.override.yml
+.docker/
 
-# pgAdmin Configuration (dev only)
+# =============================================================================
+# Database & local data
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+pgdata/
+postgres_data/
 pgadmin4/
-pgadmin_*
+pgadmin_*/
 
-# Backups
+# =============================================================================
+# Backups & temp
+# =============================================================================
+tmp/
+temp/
 *.bak
 *.backup
-*~
 
-# Frontend specific
-frontend/dist/
-frontend/.turbo/
-frontend/build/
+# =============================================================================
+# Dev scripts, test fixtures & unused scaffold assets
+# =============================================================================
+frontend/scripts/
+frontend/public/test-*
+frontend/src/assets/react.svg
+frontend/src/assets/vite.svg
+frontend/public/favicon.svg
 
-# Backend specific
-backend/bin/
-backend/.build/
+# Large source design files (optimized copies live in frontend/public/)
+Dahticket Logo.png
+**/Dahticket Logo.png

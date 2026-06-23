@@ -52,12 +52,18 @@ coverage/
 .coverage
 
 # Misc
-*.local
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
 .cache/
 .turbo/
 .eslintcache
+
+# AI / Cursor / agent tooling
+.cursor/
+.agents/
+AGENTS.md
+WORKFLOW_STATE.md
+workflow.md
+PREPUSH.md
+
+# Dev scripts & test assets
+scripts/
+public/test-*

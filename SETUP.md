@@ -168,9 +168,8 @@ lsof -i :8080
 ## 📞 Need Help?
 
 1. Check README.md for feature documentation
-2. Review WORKFLOW_STATE.md for project status
-3. See SECURITY.md for credential/environment guidance
-4. Check AGENTS.md for AI assistant guidelines
+2. See [SETUP.md](SETUP.md) for installation help
+3. See [SECURITY.md](SECURITY.md) for credential/environment guidance
 
 ---
 

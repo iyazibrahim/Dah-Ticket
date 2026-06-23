@@ -49,3 +49,11 @@ logs/
 
 # Misc
 .cache/
+
+# AI / Cursor / agent tooling
+.cursor/
+.agents/
+AGENTS.md
+WORKFLOW_STATE.md
+workflow.md
+PREPUSH.md

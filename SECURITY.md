@@ -248,8 +248,7 @@ A: Yes! Store in `.env` or use `docker compose --env-file ./path/to/.env` when r
 
 1. Check this guide first
 2. Ask your team lead
-3. Review WORKFLOW_STATE.md for context
-4. Report security vulnerabilities privately (DO NOT open public GitHub issues)
+3. Report security vulnerabilities privately (DO NOT open public GitHub issues)
 
 ---
 

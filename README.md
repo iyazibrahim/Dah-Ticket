@@ -130,8 +130,8 @@ DahTicket_V2/
 │   └── tsconfig.json          # TypeScript configuration
 │
 ├── docker-compose.yml         # Multi-container orchestration
-├── AGENTS.md                  # AI agent setup guide
-├── WORKFLOW_STATE.md          # Project status and features
+├── SETUP.md                   # First-time setup guide
+├── SECURITY.md                # Security & secrets guidance
 └── README.md                  # This file
 ```
 
@@ -507,7 +507,7 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
 ## 📞 Support & Contributing
 
 ### Reporting Issues
-1. Check [WORKFLOW_STATE.md](WORKFLOW_STATE.md) for known issues and planned features
+1. Check existing GitHub issues for known problems
 2. Provide clear reproduction steps and environment details
 3. Include relevant error logs, screenshots, or API responses
 4. Specify browser/device for frontend issues
@@ -517,7 +517,6 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
 - Use TypeScript strict mode for all new frontend code
 - Write clear commit messages: `feat: add PM report PDF export`
 - Test on both desktop and mobile viewports
-- Update [WORKFLOW_STATE.md](WORKFLOW_STATE.md) after completing features
 
 ### Code Style
 - **Backend**: Go conventions, explicit error handling, defer for cleanup
@@ -535,8 +534,8 @@ MIT License — See LICENSE file for details
 
 ## 🎓 Additional Resources
 
-- [AGENTS.md](AGENTS.md) — AI agent setup guide and interaction patterns
-- [WORKFLOW_STATE.md](WORKFLOW_STATE.md) — Current project status, completed features, roadmap
+- [SETUP.md](SETUP.md) — First-time setup guide
+- [SECURITY.md](SECURITY.md) — Security and secrets guidance
 - [Go Documentation](https://golang.org/doc/)
 - [React Documentation](https://react.dev/)
 - [Tailwind CSS](https://tailwindcss.com/)
