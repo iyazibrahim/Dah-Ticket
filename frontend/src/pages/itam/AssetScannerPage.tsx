@@ -70,7 +70,7 @@ export default function AssetScannerPage() {
   };
 
   return (
-    <PageContainer className="space-y-6 max-w-3xl">
+    <PageContainer spacing="comfortable" className="max-w-3xl">
       <PageHeader
         title="Asset Scanner"
         subtitle="Scan secured ITAM QR tags. Generic QR apps cannot resolve asset data."

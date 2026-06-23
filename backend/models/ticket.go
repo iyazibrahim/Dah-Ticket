@@ -52,6 +52,15 @@ type Ticket struct {
 	// SLA Tracking
 	DueDate    *time.Time `json:"due_date,omitempty"`
 	ResolvedAt *time.Time `json:"resolved_at,omitempty"`
+	ClosedAt   *time.Time `json:"closed_at,omitempty"`
+
+	// On-hold metadata
+	HoldReason *HoldReason `gorm:"type:varchar(30)" json:"hold_reason,omitempty"`
+	HoldNote   string      `gorm:"type:text" json:"hold_note,omitempty"`
+
+	// Escalation metadata (not a status)
+	IsEscalated bool       `gorm:"default:false" json:"is_escalated"`
+	EscalatedAt *time.Time `json:"escalated_at,omitempty"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`

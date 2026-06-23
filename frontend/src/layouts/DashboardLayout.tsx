@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { notificationAPI, ticketAPI } from '../services/api';
 import { itamAPI } from '../services/itamAPI';
+import BrandLogo from '../components/BrandLogo';
 import type { Notification, Ticket as TicketType } from '../types';
 import type { Asset } from '../types/itam';
 
@@ -204,11 +205,8 @@ export default function DashboardLayout() {
 
       {/* Sidebar */}
       <aside className={`fixed md:sticky top-0 left-0 z-50 md:z-auto h-screen w-[85vw] max-w-72 md:w-64 flex flex-col border-r border-border bg-card transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="h-14 px-4 md:px-5 border-b border-border flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-primary/10 rounded-lg"><Ticket className="h-5 w-5 text-primary" /></div>
-            <span className="font-bold text-lg tracking-tight text-foreground">DahTicket</span>
-          </Link>
+        <div className="h-16 px-4 md:px-5 border-b border-border flex items-center justify-between gap-3">
+          <BrandLogo to="/" size="lg" className="min-w-0 flex-1" />
           <button className="md:hidden p-1 text-muted-foreground hover:text-foreground" onClick={() => setSidebarOpen(false)}>
             <X className="h-5 w-5" />
           </button>
@@ -255,7 +253,7 @@ export default function DashboardLayout() {
             <button className="md:hidden p-1.5 -ml-1 text-muted-foreground hover:text-foreground" onClick={() => setSidebarOpen(true)}>
               <Menu className="h-5 w-5" />
             </button>
-            <span className="font-bold text-base md:hidden text-foreground">DahTicket</span>
+            <BrandLogo to="/" size="md" className="md:hidden shrink-0" />
             <button
               className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
               onClick={() => setMobileSearchOpen(true)}
@@ -493,7 +491,7 @@ export default function DashboardLayout() {
           </div>
         )}
 
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-6 xl:p-8 bg-muted/20">
+        <main className="flex-1 overflow-auto p-4 md:p-6 xl:p-8 bg-muted/20">
           <Outlet />
         </main>
       </div>

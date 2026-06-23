@@ -34,6 +34,9 @@ type UpdateTicketRequest struct {
 	Type        *string `json:"type" binding:"omitempty,oneof=incident service_request problem change"`
 	Category    *string `json:"category" binding:"omitempty,max=50"`
 	AssigneeID  *uint   `json:"assignee_id"`
+	HoldReason  *string `json:"hold_reason" binding:"omitempty,oneof=awaiting_customer awaiting_vendor pending_approval blocked other"`
+	HoldNote    *string `json:"hold_note"`
+	ForceClose  bool    `json:"force_close"`
 }
 
 type TicketResponse struct {
@@ -50,6 +53,11 @@ type TicketResponse struct {
 	Assignee    *UserResponse         `json:"assignee,omitempty"`
 	DueDate     *time.Time            `json:"due_date,omitempty"`
 	ResolvedAt  *time.Time            `json:"resolved_at,omitempty"`
+	ClosedAt    *time.Time            `json:"closed_at,omitempty"`
+	HoldReason  *models.HoldReason    `json:"hold_reason,omitempty"`
+	HoldNote    string                `json:"hold_note,omitempty"`
+	IsEscalated bool                  `json:"is_escalated"`
+	EscalatedAt *time.Time            `json:"escalated_at,omitempty"`
 	Comments    []CommentResponse     `json:"comments,omitempty"`
 	CreatedAt   time.Time             `json:"created_at"`
 	UpdatedAt   time.Time             `json:"updated_at"`
@@ -297,6 +305,11 @@ func UpdateTicket(c *gin.Context) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Employees can only close or reopen resolved tickets"})
 				return
 			}
+			ctx := models.TransitionContext{IsRequester: true}
+			if err := models.ValidateStatusTransition(ticket.Status, newStatus, ctx); err != nil {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+				return
+			}
 		}
 	} else if actor.IsStaffMember() {
 		if req.AssigneeID != nil {
@@ -313,9 +326,27 @@ func UpdateTicket(c *gin.Context) {
 		}
 		if req.Status != nil {
 			newStatus := models.TicketStatus(*req.Status)
-			if newStatus == models.StatusInProgress && ticket.AssigneeID != nil && *ticket.AssigneeID != userID && !actor.CanAssignAnyone() {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Only the assignee or a manager can move this ticket to in progress"})
+			isAssignee := ticket.AssigneeID != nil && *ticket.AssigneeID == userID
+			ctx := models.TransitionContext{
+				IsStaff:         true,
+				IsRequester:     ticket.RequesterID == userID,
+				IsAssignee:      isAssignee,
+				CanAssignAnyone: actor.CanAssignAnyone(),
+				ForceClose:      req.ForceClose,
+			}
+			if err := models.ValidateStatusTransition(ticket.Status, newStatus, ctx); err != nil {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 				return
+			}
+			if newStatus == models.StatusOnHold {
+				if req.HoldReason == nil || !models.IsValidHoldReason(*req.HoldReason) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "hold_reason is required when putting a ticket on hold"})
+					return
+				}
+				if *req.HoldReason == string(models.HoldOther) && (req.HoldNote == nil || *req.HoldNote == "") {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "hold_note is required when hold reason is other"})
+					return
+				}
 			}
 		}
 	}
@@ -351,12 +382,29 @@ func UpdateTicket(c *gin.Context) {
 		changes = append(changes, fmt.Sprintf("status: %s → %s", oldStatus, newStatus))
 		ticket.Status = newStatus
 
-		// Track resolution time
 		if newStatus == models.StatusResolved && oldStatus != models.StatusResolved {
 			now := time.Now()
 			ticket.ResolvedAt = &now
 		} else if newStatus != models.StatusResolved {
 			ticket.ResolvedAt = nil
+		}
+
+		if newStatus == models.StatusClosed && oldStatus != models.StatusClosed {
+			now := time.Now()
+			ticket.ClosedAt = &now
+		} else if newStatus != models.StatusClosed {
+			ticket.ClosedAt = nil
+		}
+
+		if newStatus == models.StatusOnHold {
+			hr := models.HoldReason(*req.HoldReason)
+			ticket.HoldReason = &hr
+			if req.HoldNote != nil {
+				ticket.HoldNote = *req.HoldNote
+			}
+		} else if newStatus != models.StatusOnHold {
+			ticket.HoldReason = nil
+			ticket.HoldNote = ""
 		}
 	}
 	if req.AssigneeID != nil {
@@ -480,6 +528,8 @@ func AcceptTicket(c *gin.Context) {
 	assigneeID := actor.ID
 	ticket.AssigneeID = &assigneeID
 	ticket.Status = models.StatusInProgress
+	ticket.HoldReason = nil
+	ticket.HoldNote = ""
 
 	if err := database.DB.Save(&ticket).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to accept ticket"})
@@ -494,6 +544,60 @@ func AcceptTicket(c *gin.Context) {
 	LogAudit(c, models.AuditActionAssign, "ticket", ticket.ID,
 		ToJSON(oldValues), ToJSON(newValues),
 		fmt.Sprintf("Ticket #%d accepted by %s", ticket.ID, actor.Email))
+
+	c.JSON(http.StatusOK, gin.H{"ticket": toTicketResponse(ticket)})
+}
+
+// EscalateTicket bumps priority and flags a ticket as escalated.
+func EscalateTicket(c *gin.Context) {
+	ticketID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ticket ID"})
+		return
+	}
+
+	actor, ok := middleware.GetUser(c)
+	if !ok || !actor.IsStaffMember() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Staff access required"})
+		return
+	}
+
+	var ticket models.Ticket
+	if err := database.DB.Preload("Requester").Preload("Assignee").First(&ticket, uint(ticketID)).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Ticket not found"})
+		return
+	}
+
+	if ticket.Status != models.StatusInProgress {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Only in-progress tickets can be escalated"})
+		return
+	}
+
+	isAssignee := ticket.AssigneeID != nil && *ticket.AssigneeID == actor.ID
+	if !isAssignee && !actor.CanAssignAnyone() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only the assignee or a manager can escalate this ticket"})
+		return
+	}
+
+	oldPriority := ticket.Priority
+	ticket.Priority = models.NextPriority(ticket.Priority)
+	ticket.IsEscalated = true
+	now := time.Now()
+	ticket.EscalatedAt = &now
+	newDue := config.GetSLADueDate(string(ticket.Priority), ticket.CreatedAt)
+	ticket.DueDate = &newDue
+
+	if err := database.DB.Save(&ticket).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to escalate ticket"})
+		return
+	}
+
+	database.DB.Preload("Requester").Preload("Assignee").First(&ticket, ticket.ID)
+
+	LogAudit(c, models.AuditActionUpdate, "ticket", ticket.ID,
+		ToJSON(map[string]interface{}{"priority": oldPriority, "is_escalated": false}),
+		ToJSON(map[string]interface{}{"priority": ticket.Priority, "is_escalated": true}),
+		fmt.Sprintf("Ticket #%d escalated (priority: %s → %s)", ticket.ID, oldPriority, ticket.Priority))
 
 	c.JSON(http.StatusOK, gin.H{"ticket": toTicketResponse(ticket)})
 }
@@ -734,6 +838,11 @@ func toTicketResponse(t models.Ticket) TicketResponse {
 		AssigneeID:  t.AssigneeID,
 		DueDate:     t.DueDate,
 		ResolvedAt:  t.ResolvedAt,
+		ClosedAt:    t.ClosedAt,
+		HoldReason:  t.HoldReason,
+		HoldNote:    t.HoldNote,
+		IsEscalated: t.IsEscalated,
+		EscalatedAt: t.EscalatedAt,
 		CreatedAt:   t.CreatedAt,
 		UpdatedAt:   t.UpdatedAt,
 	}

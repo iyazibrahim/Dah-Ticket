@@ -20,6 +20,8 @@ import {
   UserCheck,
   ListTodo,
 } from 'lucide-react';
+import StatusBadge from '../../components/ui/StatusBadge';
+import { getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
 
 type PersonalStats = {
   month: number;
@@ -29,22 +31,6 @@ type PersonalStats = {
   currently_assigned: number;
   requested_this_month: number;
   closed_this_month: number;
-};
-
-const statusColors: Record<string, string> = {
-  open: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  in_progress: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  on_hold: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  resolved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  closed: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
-};
-
-const statusLabels: Record<string, string> = {
-  open: 'Open',
-  in_progress: 'In Progress',
-  on_hold: 'On Hold',
-  resolved: 'Resolved',
-  closed: 'Closed',
 };
 
 const priorityColors: Record<string, string> = {
@@ -72,6 +58,7 @@ export default function DashboardPage() {
   const [personalStats, setPersonalStats] = useState<PersonalStats | null>(null);
   const [myAssets, setMyAssets] = useState<Asset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -147,11 +134,24 @@ export default function DashboardPage() {
   }, [isStaff, personalStats]);
 
   const staffStatCards = [
-    { label: 'Open', key: 'open', icon: <TicketIcon className="h-4 w-4" />, accent: 'blue' as const },
-    { label: 'In Progress', key: 'in_progress', icon: <Clock className="h-4 w-4" />, accent: 'amber' as const },
-    { label: 'Resolved', key: 'resolved', icon: <CheckCircle2 className="h-4 w-4" />, accent: 'emerald' as const },
-    { label: 'Unassigned', key: 'unassigned', icon: <AlertTriangle className="h-4 w-4" />, accent: 'rose' as const },
+    { label: 'Open', key: 'open', filterKey: 'open', icon: <TicketIcon className="h-4 w-4" />, accent: 'blue' as const },
+    { label: 'In Progress', key: 'in_progress', filterKey: 'in_progress', icon: <Clock className="h-4 w-4" />, accent: 'amber' as const },
+    { label: 'Resolved', key: 'resolved', filterKey: 'resolved', icon: <CheckCircle2 className="h-4 w-4" />, accent: 'emerald' as const },
+    { label: 'Unassigned', key: 'unassigned', filterKey: 'unassigned', icon: <AlertTriangle className="h-4 w-4" />, accent: 'rose' as const },
   ];
+
+  const matchesFilter = (ticket: Ticket) => {
+    if (!statusFilter) return true;
+    if (statusFilter === 'unassigned') return !ticket.assignee_id;
+    return ticket.status === statusFilter;
+  };
+
+  const filteredQueue = myQueue.filter(matchesFilter);
+  const filteredRecent = recentTickets.filter(matchesFilter);
+
+  const toggleStatusFilter = (filterKey: string) => {
+    setStatusFilter((prev) => (prev === filterKey ? null : filterKey));
+  };
 
   if (isLoading) {
     return (
@@ -162,7 +162,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <PageContainer className="space-y-4">
+    <PageContainer spacing="compact">
       <PageHeader
         title={`Welcome back, ${user?.first_name}`}
         subtitle={
@@ -206,14 +206,16 @@ export default function DashboardPage() {
                 </Link>
               </div>
 
-              {myQueue.length === 0 ? (
-                <div className="px-3 py-6 text-center">
+              {filteredQueue.length === 0 ? (
+                <div className="px-4 py-12 text-center">
                   <CheckCircle2 className="h-6 w-6 text-muted-foreground/30 mx-auto mb-1.5" />
-                  <p className="text-xs text-muted-foreground">No open or in-progress tickets assigned to you.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {statusFilter ? 'No tickets in your queue match this filter.' : 'No open or in-progress tickets assigned to you.'}
+                  </p>
                 </div>
               ) : (
                 <div className="divide-y divide-border max-h-[180px] overflow-y-auto">
-                  {myQueue.map((ticket) => (
+                  {filteredQueue.map((ticket) => (
                     <Link
                       key={ticket.id}
                       to={`/tickets/${ticket.id}`}
@@ -221,9 +223,7 @@ export default function DashboardPage() {
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-xs font-mono text-muted-foreground shrink-0">#{ticket.id}</span>
-                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${statusColors[ticket.status]}`}>
-                          {statusLabels[ticket.status]}
-                        </span>
+                        <StatusBadge label={getTicketStatusLabel(ticket.status)} className={getTicketStatusClass(ticket.status)} size="xs" />
                         <p className="text-sm font-medium text-foreground truncate flex-1">{ticket.title}</p>
                         <span className={`text-[10px] capitalize shrink-0 ${priorityColors[ticket.priority]}`}>
                           {ticket.priority}
@@ -237,22 +237,33 @@ export default function DashboardPage() {
           )}
 
           <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-            <div className="px-3 py-2.5 border-b border-border flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-foreground">Recent Tickets</h2>
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-foreground">
+                Recent Tickets
+                {statusFilter && (
+                  <span className="ml-2 text-xs font-normal text-primary capitalize">
+                    ({statusFilter.replace('_', ' ')})
+                  </span>
+                )}
+              </h2>
               <Link to="/tickets" className="text-xs text-primary hover:underline">
                 View all
               </Link>
             </div>
 
-            {recentTickets.length === 0 ? (
-              <div className="px-3 py-8 text-center">
+            {filteredRecent.length === 0 ? (
+              <div className="px-4 py-12 text-center">
                 <TicketIcon className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground font-medium">No tickets yet</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Create your first ticket to get started.</p>
+                <p className="text-sm text-muted-foreground font-medium">
+                  {statusFilter ? 'No tickets match this filter' : 'No tickets yet'}
+                </p>
+                {!statusFilter && (
+                  <p className="text-xs text-muted-foreground mt-0.5">Create your first ticket to get started.</p>
+                )}
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {recentTickets.map((ticket) => (
+                {filteredRecent.map((ticket) => (
                   <Link
                     to={`/tickets/${ticket.id}`}
                     key={ticket.id}
@@ -260,9 +271,7 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs font-mono text-muted-foreground">#{ticket.id}</span>
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${statusColors[ticket.status]}`}>
-                        {statusLabels[ticket.status]}
-                      </span>
+                      <StatusBadge label={getTicketStatusLabel(ticket.status)} className={getTicketStatusClass(ticket.status)} size="xs" />
                     </div>
                     <p className="text-sm font-medium text-foreground truncate flex-1 min-w-0">{ticket.title}</p>
                     <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline">
@@ -283,10 +292,11 @@ export default function DashboardPage() {
         <div className="lg:col-span-5 space-y-4">
           {isStaff && (
             <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-              <div className="px-3 py-2.5 border-b border-border">
+              <div className="px-4 py-3 border-b border-border">
                 <h2 className="text-sm font-semibold text-foreground">System Overview</h2>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Click a card to filter lists below</p>
               </div>
-              <div className="p-3 grid grid-cols-2 gap-2">
+              <div className="p-4 grid grid-cols-2 gap-4">
                 {staffStatCards.map((stat) => (
                   <StatCard
                     key={stat.key}
@@ -295,6 +305,9 @@ export default function DashboardPage() {
                     icon={stat.icon}
                     accent={stat.accent}
                     compact
+                    interactive
+                    active={statusFilter === stat.filterKey}
+                    onClick={() => toggleStatusFilter(stat.filterKey)}
                   />
                 ))}
               </div>

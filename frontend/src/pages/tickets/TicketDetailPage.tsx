@@ -1,25 +1,43 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, type FormEvent, type ClipboardEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { ticketAPI, commentAPI, adminAPI, attachmentAPI } from '../../services/api';
 import api from '../../services/api';
 import { itamAPI } from '../../services/itamAPI';
 import type { Ticket, Comment, User, Attachment } from '../../types';
 import type { AssetTicketLink, Asset } from '../../types/itam';
-import { Loader2, Send, Clock, User as UserIcon, Lock, AlertCircle, History, MessageSquare, Package, Search, X, Link as LinkIcon, Paperclip, Download } from 'lucide-react';
+import { Loader2, Send, Clock, User as UserIcon, Lock, AlertCircle, History, MessageSquare, Package, Search, X, Link as LinkIcon, Paperclip, Download, AlertTriangle, MoreHorizontal, ImagePlus } from 'lucide-react';
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
 import BackLink from '../../components/BackLink';
+import StatusStepper from '../../components/tickets/StatusStepper';
+import HoldReasonModal from '../../components/tickets/HoldReasonModal';
+import {
+  holdReasonLabels,
+  getAvailableActions,
+  priorityColors,
+  type HoldReason,
+  type TicketAction,
+} from '../../lib/ticketWorkflow';
+import { getActionButtonClasses } from '../../lib/statusBadges';
+import StatusBadge from '../../components/ui/StatusBadge';
+import { getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { isStaff, canAssignAnyone } = usePermissions();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [isInternal, setIsInternal] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
+  const [showHoldModal, setShowHoldModal] = useState(false);
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const [pendingCommentFiles, setPendingCommentFiles] = useState<File[]>([]);
+  const commentFileInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
@@ -39,8 +57,56 @@ export default function TicketDetailPage() {
   const [unlinkingAssetId, setUnlinkingAssetId] = useState<number | null>(null);
   const assetSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isStaff = user?.role === 'it_agent' || user?.role === 'admin';
   const isRequester = ticket?.requester?.id === user?.id;
+  const isAssignee = ticket?.assignee?.id === user?.id;
+
+  const pendingCommentPreviewUrls = useMemo(
+    () => pendingCommentFiles.map((file) => URL.createObjectURL(file)),
+    [pendingCommentFiles],
+  );
+
+  useEffect(() => {
+    return () => {
+      pendingCommentPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [pendingCommentPreviewUrls]);
+
+  const addCommentImages = (files: FileList | File[] | null) => {
+    if (!files) return;
+    const incoming = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (incoming.length === 0) return;
+    setPendingCommentFiles((prev) => {
+      const keys = new Set(prev.map((f) => `${f.name}-${f.size}-${f.lastModified}`));
+      const deduped = incoming.filter((f) => !keys.has(`${f.name}-${f.size}-${f.lastModified}`));
+      return [...prev, ...deduped].slice(0, 5);
+    });
+  };
+
+  const onCommentPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!e.clipboardData?.items) return;
+    const imageItems = Array.from(e.clipboardData.items).filter((item) => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+    const files = imageItems.map((item) => item.getAsFile()).filter((file): file is File => !!file);
+    if (files.length > 0) {
+      e.preventDefault();
+      addCommentImages(files);
+    }
+  };
+
+  const removePendingCommentFile = (index: number) => {
+    setPendingCommentFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const commentAttachmentsByCommentId = useMemo(() => {
+    const map: Record<number, Attachment[]> = {};
+    for (const att of attachments) {
+      if (att.comment_id) {
+        if (!map[att.comment_id]) map[att.comment_id] = [];
+        map[att.comment_id].push(att);
+      }
+    }
+    return map;
+  }, [attachments]);
 
   const fetchTicket = async () => {
     try {
@@ -181,16 +247,60 @@ export default function TicketDetailPage() {
     }
   };
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleStatusChange = async (
+    newStatus: string,
+    options?: { hold_reason?: HoldReason; hold_note?: string; force_close?: boolean },
+  ) => {
     if (!ticket) return;
     try {
-      await ticketAPI.update(ticket.id, { status: newStatus as Ticket['status'] });
+      await ticketAPI.update(ticket.id, {
+        status: newStatus as Ticket['status'],
+        hold_reason: options?.hold_reason,
+        hold_note: options?.hold_note,
+        force_close: options?.force_close,
+      });
       await fetchTicket();
-      await fetchExtraData(); // refresh audit logs
+      await fetchExtraData();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
       alert(axiosErr.response?.data?.error || 'Failed to update status');
+      throw err;
     }
+  };
+
+  const handleEscalate = async () => {
+    if (!ticket) return;
+    try {
+      await ticketAPI.escalate(ticket.id);
+      await fetchTicket();
+      await fetchExtraData();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      alert(axiosErr.response?.data?.error || 'Failed to escalate ticket');
+    }
+  };
+
+  const handleAction = async (action: TicketAction) => {
+    if (action.type === 'hold') {
+      setShowHoldModal(true);
+      return;
+    }
+    if (action.type === 'escalate') {
+      if (confirm('Escalate this ticket? Priority will increase and the ticket will be flagged.')) {
+        await handleEscalate();
+      }
+      return;
+    }
+    if (action.type === 'transition') {
+      if (action.forceClose && !confirm('Close this ticket without marking it resolved?')) {
+        return;
+      }
+      await handleStatusChange(action.status, { force_close: action.forceClose });
+    }
+  };
+
+  const handleHoldConfirm = async (reason: HoldReason, note: string) => {
+    await handleStatusChange('on_hold', { hold_reason: reason, hold_note: note });
   };
 
   const handlePriorityChange = async (newPriority: string) => {
@@ -243,14 +353,25 @@ export default function TicketDetailPage() {
 
   const handleAddComment = async (e: FormEvent) => {
     e.preventDefault();
-    if (!ticket || !commentText.trim()) return;
+    if (!ticket || (!commentText.trim() && pendingCommentFiles.length === 0)) return;
     setIsSending(true);
     try {
-      await commentAPI.add(ticket.id, { content: commentText, is_internal: isInternal });
+      const res = await commentAPI.add(ticket.id, {
+        content: commentText.trim() || '(image attachment)',
+        is_internal: isInternal,
+      });
+      const commentId = res.data.comment?.id;
+      if (commentId && pendingCommentFiles.length > 0) {
+        await Promise.all(
+          pendingCommentFiles.map((file) => attachmentAPI.upload(ticket.id, file, commentId)),
+        );
+      }
       setCommentText('');
       setIsInternal(false);
-      await fetchTicket(); // Reload ticket with new comments
-      await fetchExtraData(); // Reload logs
+      setPendingCommentFiles([]);
+      await fetchTicket();
+      await fetchExtraData();
+      await fetchAttachments();
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
       alert(axiosErr.response?.data?.error || 'Failed to add comment');
@@ -259,19 +380,23 @@ export default function TicketDetailPage() {
     }
   };
 
-  const statusColors: Record<string, string> = {
-    open: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    in_progress: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    on_hold: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-    resolved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    closed: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
-  };
-  const statusLabels: Record<string, string> = {
-    open: 'Open', in_progress: 'In Progress', on_hold: 'On Hold', resolved: 'Resolved', closed: 'Closed',
-  };
-  const priorityColors: Record<string, string> = {
-    low: 'text-muted-foreground', medium: 'text-amber-500', high: 'text-red-500', critical: 'text-red-600',
-  };
+  const issueAttachments = attachments.filter((a) => !a.comment_id);
+
+  const availableActions = ticket
+    ? getAvailableActions(ticket, {
+        isStaff,
+        isRequester: !!isRequester,
+        isAssignee: !!isAssignee,
+        canAssignAnyone,
+      })
+    : [];
+
+  const primaryActions = availableActions.filter(
+    (a) => a.type !== 'transition' || !a.forceClose,
+  );
+  const overflowActions = availableActions.filter(
+    (a) => a.type === 'transition' && a.forceClose,
+  );
 
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -294,25 +419,47 @@ export default function TicketDetailPage() {
   }
 
   return (
-    <PageContainer className="space-y-6">
+    <PageContainer spacing="comfortable">
       <PageHeader
         title={ticket.title}
         backTo="/tickets"
         backLabel="Tickets"
       />
 
+      <HoldReasonModal
+        open={showHoldModal}
+        onClose={() => setShowHoldModal(false)}
+        onConfirm={handleHoldConfirm}
+      />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Ticket header */}
-          <div className="bg-card border border-border rounded-xl p-6">
+          <div className="bg-card border border-border rounded-2xl p-6">
             <div className="flex items-center gap-2 flex-wrap mb-3">
               <span className="text-sm font-mono text-muted-foreground">#{ticket.id}</span>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[ticket.status]}`}>{statusLabels[ticket.status]}</span>
+              <StatusBadge label={getTicketStatusLabel(ticket.status)} className={getTicketStatusClass(ticket.status)} />
               <span className={`text-xs font-medium capitalize ${priorityColors[ticket.priority]}`}>{ticket.priority} priority</span>
+              {ticket.is_escalated && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                  <AlertTriangle className="h-3 w-3" /> Escalated
+                </span>
+              )}
+              {ticket.status === 'on_hold' && ticket.hold_reason && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                  {holdReasonLabels[ticket.hold_reason]}
+                </span>
+              )}
               <span className="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full capitalize">{ticket.type.replace('_', ' ')}</span>
               <span className="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full capitalize">{ticket.category}</span>
             </div>
+            <div className="mb-5">
+              <StatusStepper status={ticket.status} />
+            </div>
+            {ticket.status === 'on_hold' && ticket.hold_note && (
+              <p className="text-xs text-muted-foreground mb-3 italic">Hold note: {ticket.hold_note}</p>
+            )}
             <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
 
             <div className="mt-5 pt-4 border-t border-border">
@@ -326,13 +473,13 @@ export default function TicketDetailPage() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading attachments...
                 </div>
-              ) : attachments.length === 0 ? (
+              ) : issueAttachments.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No issue images/files uploaded.</p>
               ) : (
                 <div className="space-y-4">
-                  {attachments.some((a) => a.mime_type?.startsWith('image/')) && (
+                  {issueAttachments.some((a) => a.mime_type?.startsWith('image/')) && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {attachments
+                      {issueAttachments
                         .filter((a) => a.mime_type?.startsWith('image/'))
                         .map((a) => (
                           <div key={a.id} className="border border-border rounded-lg overflow-hidden bg-muted/20">
@@ -360,9 +507,9 @@ export default function TicketDetailPage() {
                     </div>
                   )}
 
-                  {attachments.some((a) => !a.mime_type?.startsWith('image/')) && (
+                  {issueAttachments.some((a) => !a.mime_type?.startsWith('image/')) && (
                     <div className="space-y-2">
-                      {attachments
+                      {issueAttachments
                         .filter((a) => !a.mime_type?.startsWith('image/'))
                         .map((a) => (
                           <div key={a.id} className="flex items-center justify-between p-2 border border-border rounded-lg bg-muted/10">
@@ -407,8 +554,10 @@ export default function TicketDetailPage() {
             {/* Content Area */}
             {activeTab === 'comments' ? (
               <div className="flex flex-col">
-                <div className="bg-muted/10 p-3 text-xs text-muted-foreground text-center border-b border-border">
-                  Internal notes are only visible to IT Agents and Admins. Regular notes are visible to the requester.
+                <div className="bg-muted/10 px-4 py-3 text-xs text-muted-foreground text-center border-b border-border">
+                  {isStaff
+                    ? 'Choose "Note to User" for replies visible to the requester, or "Internal Note" for IT-only notes.'
+                    : 'Your comments are visible to IT staff working on this ticket.'}
                 </div>
                 
                 {/* Comment list */}
@@ -431,6 +580,19 @@ export default function TicketDetailPage() {
                           <span className="text-xs text-muted-foreground ml-auto">{formatDate(comment.created_at)}</span>
                         </div>
                         <p className="text-sm text-foreground whitespace-pre-wrap pl-9">{comment.content}</p>
+                        {(commentAttachmentsByCommentId[comment.id] ?? []).length > 0 && (
+                          <div className="pl-9 mt-3 flex flex-wrap gap-2">
+                            {(commentAttachmentsByCommentId[comment.id] ?? []).map((att) => (
+                              <div key={att.id} className="border border-border rounded-lg overflow-hidden bg-muted/20">
+                                {att.mime_type?.startsWith('image/') && imagePreviews[att.id] ? (
+                                  <img src={imagePreviews[att.id]} alt={att.file_name} className="h-24 w-24 object-cover" />
+                                ) : (
+                                  <div className="h-24 w-24 flex items-center justify-center p-2 text-xs text-muted-foreground text-center">{att.file_name}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -439,36 +601,77 @@ export default function TicketDetailPage() {
                 )}
 
                 {/* Add comment form */}
-                <form onSubmit={handleAddComment} className="p-5 border-t border-border bg-muted/20">
+                <form onSubmit={handleAddComment} className="p-4 border-t border-border bg-muted/20">
+                  {isStaff && (
+                    <div className="flex rounded-lg border border-border overflow-hidden mb-3 w-fit">
+                      <button
+                        type="button"
+                        onClick={() => setIsInternal(false)}
+                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                          !isInternal
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-card text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Note to User
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsInternal(true)}
+                        className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-l border-border ${
+                          isInternal
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-card text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        <Lock className="h-3.5 w-3.5" />
+                        Internal Note
+                      </button>
+                    </div>
+                  )}
                   <textarea
                     rows={3} value={commentText} onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="Add a comment..."
+                    onPaste={onCommentPaste}
+                    placeholder={isInternal ? 'Add an internal note for IT team…' : 'Reply to the requester…'}
                     className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all text-sm resize-y"
                   />
-                  <div className="flex items-center justify-between mt-3">
-                    <div>
-                      {isStaff && (
-                        <div className="flex items-center gap-2">
+                  {pendingCommentFiles.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {pendingCommentFiles.map((file, index) => (
+                        <div key={`${file.name}-${index}`} className="relative border border-border rounded-lg overflow-hidden">
+                          <img src={pendingCommentPreviewUrls[index]} alt={file.name} className="h-20 w-20 object-cover" />
                           <button
                             type="button"
-                            role="switch"
-                            aria-checked={isInternal}
-                            onClick={() => setIsInternal(!isInternal)}
-                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-card ${isInternal ? 'bg-amber-500' : 'bg-border'}`}
+                            onClick={() => removePendingCommentFile(index)}
+                            className="absolute top-1 right-1 p-0.5 rounded-full bg-black/60 text-white hover:bg-black/80"
                           >
-                            <span className="sr-only">Internal note</span>
-                            <span
-                              aria-hidden="true"
-                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isInternal ? 'translate-x-2' : '-translate-x-2'}`}
-                            />
+                            <X className="h-3 w-3" />
                           </button>
-                          <label className="text-sm font-medium text-muted-foreground cursor-pointer" onClick={() => setIsInternal(!isInternal)}>
-                            Internal Note
-                          </label>
                         </div>
-                      )}
+                      ))}
                     </div>
-                    <button type="submit" disabled={isSending || !commentText.trim()}
+                  )}
+                  <div className="flex items-center justify-between mt-3 gap-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={commentFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => { addCommentImages(e.target.files); e.target.value = ''; }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => commentFileInputRef.current?.click()}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border border-border rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <ImagePlus className="h-4 w-4" />
+                        Attach image
+                      </button>
+                      <span className="text-[10px] text-muted-foreground hidden sm:inline">Paste screenshot with Ctrl+V</span>
+                    </div>
+                    <button type="submit" disabled={isSending || (!commentText.trim() && pendingCommentFiles.length === 0)}
                       className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                       {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                       Send
@@ -533,48 +736,52 @@ export default function TicketDetailPage() {
             {/* Action Buttons */}
             <div className="flex flex-col gap-2 pb-4 border-b border-border">
               <label className="block text-xs text-muted-foreground mb-1">Actions</label>
-              {isStaff && (
+              {primaryActions.length > 0 ? (
+                primaryActions.map((action, idx) => (
+                  <button
+                    key={`${action.type}-${idx}`}
+                    onClick={() => handleAction(action)}
+                    className={`w-full transition-colors ${getActionButtonClasses(action)}`}
+                  >
+                    {action.label}
+                  </button>
+                ))
+              ) : (
                 <>
-                  {ticket.status === 'open' && (
-                    <button onClick={() => handleStatusChange('in_progress')} className="w-full py-2 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors rounded-lg text-sm font-medium">Start Progress</button>
-                  )}
-                  {ticket.status === 'in_progress' && (
-                    <>
-                      <button onClick={() => handleStatusChange('on_hold')} className="w-full py-2 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors rounded-lg text-sm font-medium mb-2">Put On Hold</button>
-                      <button onClick={() => handleStatusChange('resolved')} className="w-full py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors rounded-lg text-sm font-medium">Mark Resolved</button>
-                    </>
-                  )}
-                  {ticket.status === 'on_hold' && (
-                    <>
-                      <button onClick={() => handleStatusChange('in_progress')} className="w-full py-2 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors rounded-lg text-sm font-medium mb-2">Resume Progress</button>
-                      <button onClick={() => handleStatusChange('closed')} className="w-full py-2 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors rounded-lg text-sm font-medium">Close Ticket</button>
-                    </>
-                  )}
-                  {ticket.status === 'resolved' && !isRequester && (
+                  {ticket.status === 'resolved' && isStaff && !isRequester && (
                     <p className="text-xs text-muted-foreground italic">Waiting for requester to accept resolution.</p>
+                  )}
+                  {ticket.status === 'closed' && (
+                    <p className="text-xs text-muted-foreground italic">Ticket is closed.</p>
+                  )}
+                  {ticket.status === 'on_hold' && !isStaff && (
+                    <p className="text-xs text-muted-foreground italic">Ticket is currently on hold by IT staff.</p>
                   )}
                 </>
               )}
-
-              {/* Requester Actions (shown if user is the requester OR if they aren't staff) */}
-              {(isRequester || !isStaff) && (
-                <>
-                  {ticket.status === 'resolved' && (
-                    <>
-                      <button onClick={() => handleStatusChange('closed')} className="w-full py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors rounded-lg text-sm font-medium mb-2 mt-2">Accept & Close</button>
-                      <button onClick={() => handleStatusChange('in_progress')} className="w-full py-2 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors rounded-lg text-sm font-medium">Not Fixed (Reopen)</button>
-                    </>
+              {overflowActions.length > 0 && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowOverflowMenu(!showOverflowMenu)}
+                    className="w-full py-2 flex items-center justify-center gap-1 bg-muted text-muted-foreground hover:bg-muted/80 rounded-lg text-sm font-medium"
+                  >
+                    <MoreHorizontal className="h-4 w-4" /> More actions
+                  </button>
+                  {showOverflowMenu && (
+                    <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+                      {overflowActions.map((action, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => { setShowOverflowMenu(false); handleAction(action); }}
+                          className={`w-full px-4 py-2.5 text-left text-sm hover:bg-muted transition-colors ${getActionButtonClasses(action)}`}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
                   )}
-                  {(ticket.status === 'open' || ticket.status === 'in_progress') && !isStaff && (
-                    <button onClick={() => handleStatusChange('closed')} className="w-full py-2 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors rounded-lg text-sm font-medium mt-2">Close Ticket</button>
-                  )}
-                  {ticket.status === 'closed' && (
-                    <p className="text-xs text-muted-foreground italic mt-2">Ticket is closed.</p>
-                  )}
-                  {ticket.status === 'on_hold' && !isStaff && (
-                    <p className="text-xs text-muted-foreground italic mt-2">Ticket is currently on hold by IT staff.</p>
-                  )}
-                </>
+                </div>
               )}
             </div>
 
@@ -654,6 +861,13 @@ export default function TicketDetailPage() {
                   <Clock className="h-4 w-4 text-emerald-500" />
                   <span className="text-muted-foreground">Resolved:</span>
                   <span className="text-emerald-600">{formatDate(ticket.resolved_at)}</span>
+                </div>
+              )}
+              {ticket.closed_at && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Closed:</span>
+                  <span className="text-foreground">{formatDate(ticket.closed_at)}</span>
                 </div>
               )}
             </div>

@@ -47,3 +47,15 @@
     @apply bg-background text-foreground font-sans antialiased;
   }
 }
+
+@layer utilities {
+  .page-section-gap {
+    @apply space-y-5;
+  }
+  .page-detail-gap {
+    @apply space-y-6;
+  }
+  .empty-state {
+    @apply py-12 text-center text-muted-foreground text-sm;
+  }
+}

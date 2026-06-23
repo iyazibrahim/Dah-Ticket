@@ -2,7 +2,8 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { authAPI } from '../../services/api';
-import { Ticket, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import BrandLogo from '../../components/BrandLogo';
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -89,11 +90,8 @@ export default function RegisterPage() {
           <div className="absolute bottom-10 left-20 w-64 h-64 rounded-full bg-white/10 blur-3xl" />
         </div>
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20 text-white">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="p-2.5 bg-white/15 rounded-xl backdrop-blur-sm">
-              <Ticket className="h-8 w-8" />
-            </div>
-            <span className="text-3xl font-bold tracking-tight">DahTicket</span>
+          <div className="mb-8">
+            <BrandLogo size="xl" />
           </div>
           <h1 className="text-4xl xl:text-5xl font-bold leading-tight mb-4">
             Get Started<br />in Seconds.
@@ -107,12 +105,8 @@ export default function RegisterPage() {
       {/* Right Panel — Register Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md">
-          {/* Mobile logo */}
-          <div className="flex items-center gap-2.5 mb-8 lg:hidden">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Ticket className="h-6 w-6 text-primary" />
-            </div>
-            <span className="text-2xl font-bold tracking-tight text-foreground">DahTicket</span>
+          <div className="mb-8 lg:hidden">
+            <BrandLogo size="md" />
           </div>
 
           <div className="mb-8">

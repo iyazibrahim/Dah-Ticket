@@ -78,7 +78,7 @@ export default function KnowledgeBasePage() {
   }, []);
 
   return (
-    <PageContainer className="space-y-5">
+    <PageContainer spacing="compact">
       <PageHeader
         title="Knowledge Base"
         subtitle={`${total} articles available`}

@@ -202,7 +202,7 @@ export default function ArticleEditorPage() {
   const canDelete = isEdit && articleMeta ? canDeleteArticle(articleMeta, perms) : false;
 
   return (
-    <PageContainer className="space-y-5">
+    <PageContainer spacing="compact">
       <PageHeader
         title={isEdit ? 'Edit Article' : 'New Article'}
         backTo={isEdit && id ? `/knowledge/${id}` : '/knowledge'}

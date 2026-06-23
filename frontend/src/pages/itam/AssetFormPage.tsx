@@ -220,7 +220,7 @@ export default function AssetFormPage() {
   }
 
   return (
-    <PageContainer className="space-y-6 max-w-3xl">
+    <PageContainer spacing="comfortable" className="max-w-3xl">
       <PageHeader
         title={isEdit ? 'Edit Asset' : 'Add Asset'}
         backTo={isEdit ? `/itam/assets/${id}` : '/itam'}

@@ -612,7 +612,26 @@ All 12 planned steps have been significantly completed. The system includes:
   - Frontend `useLocationScope` hook; scoped users auto-filter ITAM dashboard/inventory and site inspection data to assigned location.
 - Validation: `go build ./...` pass; `npm run build` pass.
 
-## Latest Update (Jun 18, 2026 - Email + Telegram Notifications & Settings Redesign)
+## Latest Update (Jun 23, 2026 - ITSM Workflow & UX Overhaul)
+
+- **Manager role bug fix**: `TicketDetailPage` now uses `usePermissions()` so managers see full staff actions and internal note controls.
+- **ITIL ticket lifecycle**: Backend transition validator enforces Open → In Progress → On Hold → Resolved → Closed; hold requires `hold_reason` + optional note; escalation endpoint bumps priority and sets `is_escalated`.
+- **Ticket metadata**: Added `hold_reason`, `hold_note`, `is_escalated`, `escalated_at`, `closed_at` on tickets.
+- **Ticket detail UX**: Status stepper, contextual action buttons with overflow menu, on-hold modal, escalation badge, shared `ticketWorkflow.ts`.
+- **Comments**: Segmented "Note to User" / "Internal Note" control for staff.
+- **Spacing system**: `Card` component, `PageContainer` spacing prop, utility classes, consistent padding across all main pages.
+- **Assets hub**: Removed "By location" collapsible; added location chip bar; metric cards filter inventory via `operational_bucket`.
+- **Clickable cards**: Dashboard System Overview and ITAM metric cards filter embedded lists; asset table rows fully clickable.
+- Validation: `go build ./...` pass; `npm run build` pass.
+
+## Latest Update (Jun 23, 2026 - Ticket UX Follow-up Fixes)
+
+- **Semantic action button colors**: Ticket detail actions use per-action colors (amber on hold, emerald resolve, blue start/resume, red escalate/reopen, slate close without resolve) via `statusBadges.ts`.
+- **Status stepper fix**: Grid layout aligns connector lines with dot centers; solid filled dots for past/current steps (fixes hollow/misaligned circles).
+- **Comment images**: Paste screenshot or attach image in comment form; uploads linked to comment via optional `comment_id` on attachment API; inline thumbnails in comment thread.
+- **Shared status badges**: `StatusBadge` + `statusBadges.ts` used on Tickets list, Dashboard, Asset inventory/detail tables with consistent semantic colors.
+- **Accept button fix**: List "Accept" hidden when ticket is on hold and already assigned (prevents accidental resume from list after putting assigned ticket on hold); assign from list no longer forces `in_progress` when ticket is on hold.
+- Validation: `go build ./...` pass; `npm run build` pass.
 
 - **Settings model/API expanded**: Email transport (enabled, SMTP host/port/user/password/from), Telegram transport (enabled, bot token, global chat ID); secrets never returned in API (`has_smtp_password`, `has_telegram_bot_token`); rotate/clear secret semantics.
 - **Notification router**: Central dispatcher for ticket created, assigned, status changed, and new public comment; gates by per-event toggles + channel enabled flags; preserves requester/assignee email recipients; Telegram posts to one global chat.

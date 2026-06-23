@@ -1083,7 +1083,7 @@ export default function PMReportsPage() {
      Page render
   ══════════════════════════════════════════════════════════════════════ */
   return (
-    <PageContainer className="flex flex-col">
+    <PageContainer spacing="comfortable" className="flex flex-col">
       <PageHeader
         title="Site Inspection"
         subtitle="Choose location → add findings → generate report."

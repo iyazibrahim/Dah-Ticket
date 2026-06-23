@@ -37,6 +37,7 @@ export interface AssetListParams {
   location_id?: number | string;
   assigned_user_id?: number | string;
   warranty_expiring_days?: number;
+  operational_bucket?: string;
 }
 
 export const itamAPI = {

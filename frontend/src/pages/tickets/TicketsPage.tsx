@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { adminAPI, ticketAPI, type TicketFilters } from '../../services/api';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../contexts/AuthContext';
+import StatusBadge from '../../components/ui/StatusBadge';
+import { canShowListAccept, getListAcceptLabel, getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
+import { statusLabels } from '../../lib/ticketWorkflow';
 import AssignDropdown from '../../components/AssignDropdown';
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
@@ -29,6 +33,7 @@ export default function TicketsPage() {
   const [quickActionLoading, setQuickActionLoading] = useState<number | null>(null);
 
   const perms = usePermissions();
+  const { user } = useAuth();
   const isStaff = perms.canAcceptTickets;
 
   const fetchTickets = useCallback(async () => {
@@ -73,7 +78,7 @@ export default function TicketsPage() {
       const payload: Partial<Pick<Ticket, 'status'> & { assignee_id: number | null }> = {
         assignee_id: assigneeId,
       };
-      if (setInProgress && (ticket.status === 'open' || ticket.status === 'on_hold')) {
+      if (setInProgress && ticket.status === 'open') {
         payload.status = 'in_progress';
       }
       await ticketAPI.update(ticket.id, payload);
@@ -128,18 +133,6 @@ export default function TicketsPage() {
     return Array.from({ length: end - adjustedStart + 1 }, (_, index) => adjustedStart + index);
   }, [currentPage, totalPages]);
 
-  const statusColors: Record<string, string> = {
-    open: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    in_progress: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    on_hold: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-    resolved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    closed: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
-  };
-
-  const statusLabels: Record<string, string> = {
-    open: 'Open', in_progress: 'In Progress', on_hold: 'On Hold', resolved: 'Resolved', closed: 'Closed',
-  };
-
   const priorityColors: Record<string, string> = {
     low: 'text-muted-foreground', medium: 'text-amber-500', high: 'text-red-500', critical: 'text-red-600 font-bold',
   };
@@ -158,16 +151,16 @@ export default function TicketsPage() {
 
     return (
       <div className="flex max-w-full items-center gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-        {(ticket.status === 'open' || ticket.status === 'on_hold') && (
+        {canShowListAccept(ticket, user?.id) && (
           <button
             type="button"
             disabled={quickActionLoading === ticket.id}
             onClick={() => acceptTicket(ticket)}
-            className="inline-flex shrink-0 items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 min-h-[44px] md:min-h-0"
-            title="Take ticket and move to In Progress"
+            className="inline-flex shrink-0 items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-100 text-blue-800 border border-blue-300 text-xs font-semibold hover:bg-blue-200 disabled:opacity-50 min-h-[44px] md:min-h-0 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-700"
+            title={ticket.status === 'on_hold' ? 'Resume work on this ticket' : 'Take ticket and move to In Progress'}
           >
             {quickActionLoading === ticket.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
-            Accept
+            {getListAcceptLabel(ticket)}
           </button>
         )}
         {canShowAssign(ticket) && (
@@ -178,7 +171,7 @@ export default function TicketsPage() {
             onSelect={(val) => {
               const selected = Number(val);
               if (!Number.isNaN(selected) && selected > 0) {
-                void quickAssign(ticket, selected, false);
+                void quickAssign(ticket, selected, true);
               }
             }}
           />
@@ -188,7 +181,7 @@ export default function TicketsPage() {
   };
 
   return (
-    <PageContainer className="space-y-5">
+    <PageContainer spacing="compact">
       <PageHeader
         title="Tickets"
         subtitle={`${total} total tickets`}
@@ -289,7 +282,10 @@ export default function TicketsPage() {
                     <div className="col-span-1 text-sm font-mono text-muted-foreground">#{ticket.id}</div>
                     <div className="col-span-3 text-sm font-medium text-foreground truncate" title={ticket.title}>{ticket.title}</div>
                     <div className="col-span-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[ticket.status]}`}>{statusLabels[ticket.status]}</span>
+                      <StatusBadge
+                        label={getTicketStatusLabel(ticket.status)}
+                        className={getTicketStatusClass(ticket.status)}
+                      />
                     </div>
                     <div className={`col-span-1 text-sm font-medium capitalize ${priorityColors[ticket.priority]}`}>{ticket.priority}</div>
                     <div className="col-span-2 text-sm text-muted-foreground truncate">{ticket.requester?.first_name} {ticket.requester?.last_name}</div>
@@ -300,7 +296,11 @@ export default function TicketsPage() {
                   <div className="md:hidden p-4">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="text-sm font-mono text-muted-foreground">#{ticket.id}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[ticket.status]}`}>{statusLabels[ticket.status]}</span>
+                      <StatusBadge
+                        label={getTicketStatusLabel(ticket.status)}
+                        className={getTicketStatusClass(ticket.status)}
+                        size="xs"
+                      />
                       <span className={`text-xs font-medium capitalize ${priorityColors[ticket.priority]}`}>{ticket.priority}</span>
                     </div>
                     <p className="text-sm font-medium text-foreground">{ticket.title}</p>

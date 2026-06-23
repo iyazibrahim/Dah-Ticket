@@ -170,7 +170,7 @@ export default function ArticleDetailPage() {
     perms.canPublishWiki && article.approval_status === 'pending_approval';
 
   return (
-    <PageContainer className="space-y-5">
+    <PageContainer spacing="compact">
       <PageHeader
         title={article.title}
         backTo="/knowledge"

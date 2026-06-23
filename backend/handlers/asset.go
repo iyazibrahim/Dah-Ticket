@@ -108,6 +108,9 @@ func ListAssets(c *gin.Context) {
 			query = query.Where("warranty_end_date IS NOT NULL AND warranty_end_date <= ?", cutoff)
 		}
 	}
+	if operationalBucket := c.Query("operational_bucket"); operationalBucket != "" {
+		query = applyOperationalBucketFilter(query, operationalBucket)
+	}
 
 	var total int64
 	query.Count(&total)

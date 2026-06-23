@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Ticket } from '../types';
+import type { Ticket, Comment } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
@@ -90,11 +90,14 @@ export const ticketAPI = {
   create: (data: { title: string; description: string; priority?: string; type?: string; category?: string }) =>
     api.post<{ ticket: Ticket }>('/tickets', data),
 
-  update: (id: number, data: Partial<Pick<Ticket, 'title' | 'description' | 'status' | 'priority' | 'type' | 'category'> & { assignee_id: number | null }>) =>
+  update: (id: number, data: Partial<Pick<Ticket, 'title' | 'description' | 'status' | 'priority' | 'type' | 'category' | 'hold_reason' | 'hold_note'> & { assignee_id: number | null; force_close?: boolean }>) =>
     api.put<{ ticket: Ticket }>(`/tickets/${id}`, data),
 
   accept: (id: number) =>
     api.post<{ ticket: Ticket }>(`/tickets/${id}/accept`),
+
+  escalate: (id: number) =>
+    api.post<{ ticket: Ticket }>(`/tickets/${id}/escalate`),
 
   delete: (id: number) =>
     api.delete(`/tickets/${id}`),
@@ -109,7 +112,7 @@ export const ticketAPI = {
 // --- Comment API ---
 export const commentAPI = {
   add: (ticketId: number, data: { content: string; is_internal?: boolean }) =>
-    api.post(`/tickets/${ticketId}/comments`, data),
+    api.post<{ comment: Comment }>(`/tickets/${ticketId}/comments`, data),
 
   update: (ticketId: number, commentId: number, data: { content: string }) =>
     api.put(`/tickets/${ticketId}/comments/${commentId}`, data),
@@ -120,9 +123,12 @@ export const commentAPI = {
 
 // --- Attachment API ---
 export const attachmentAPI = {
-  upload: (ticketId: number, file: File) => {
+  upload: (ticketId: number, file: File, commentId?: number) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (commentId != null) {
+      formData.append('comment_id', String(commentId));
+    }
     return api.post(`/tickets/${ticketId}/attachments`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });

@@ -115,6 +115,16 @@ func UploadAttachment(c *gin.Context) {
 		TicketID:   &tID,
 	}
 
+	if commentIDStr := c.PostForm("comment_id"); commentIDStr != "" {
+		if cid, err := strconv.ParseUint(commentIDStr, 10, 32); err == nil {
+			var comment models.Comment
+			if err := database.DB.Where("id = ? AND ticket_id = ?", uint(cid), uint(ticketID)).First(&comment).Error; err == nil {
+				cidUint := uint(cid)
+				attachment.CommentID = &cidUint
+			}
+		}
+	}
+
 	if err := database.DB.Create(&attachment).Error; err != nil {
 		// Clean up file on DB failure
 		os.Remove(filePath)

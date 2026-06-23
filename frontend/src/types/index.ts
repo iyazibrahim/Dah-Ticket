@@ -51,6 +51,11 @@ export interface Ticket {
   attachments?: Attachment[];
   due_date?: string;
   resolved_at?: string;
+  closed_at?: string;
+  hold_reason?: 'awaiting_customer' | 'awaiting_vendor' | 'pending_approval' | 'blocked' | 'other';
+  hold_note?: string;
+  is_escalated?: boolean;
+  escalated_at?: string;
   created_at: string;
   updated_at: string;
 }

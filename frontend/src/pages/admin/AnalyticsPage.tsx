@@ -65,7 +65,7 @@ export default function AnalyticsPage() {
   const maxTrend = Math.max(...trendData.map(d => d.created), 1);
 
   return (
-    <PageContainer className="space-y-6">
+    <PageContainer spacing="comfortable">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Analytics Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-1">System-wide insights and performance metrics.</p>

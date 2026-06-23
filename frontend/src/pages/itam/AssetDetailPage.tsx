@@ -12,21 +12,8 @@ import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
 import { QRCodeSVG } from 'qrcode.react';
 
-const statusColors: Record<string, string> = {
-  'In Use': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  'Available': 'bg-sky-500/15 text-sky-400 border-sky-500/30',
-  'In Repair': 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  'Decommissioned': 'bg-muted text-muted-foreground border-border',
-  'Lost / Stolen': 'bg-rose-500/15 text-rose-400 border-rose-500/30',
-};
-
-const ticketStatusColors: Record<string, string> = {
-  open: 'text-sky-400',
-  in_progress: 'text-blue-400',
-  on_hold: 'text-amber-400',
-  resolved: 'text-emerald-400',
-  closed: 'text-muted-foreground',
-};
+import StatusBadge from '../../components/ui/StatusBadge';
+import { getAssetStatusClass, getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
 
 const rmCurrencyFormatter = new Intl.NumberFormat('ms-MY', {
   style: 'currency',
@@ -140,7 +127,7 @@ export default function AssetDetailPage() {
   const statusName = asset.status?.name ?? '';
 
   return (
-    <PageContainer className="space-y-6">
+    <PageContainer spacing="comfortable">
       <PageHeader
         title={asset.name}
         backTo="/itam"
@@ -173,13 +160,7 @@ export default function AssetDetailPage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-3 mb-1">
-              <span
-                className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
-                  statusColors[statusName] ?? 'bg-muted text-muted-foreground border-border'
-                }`}
-              >
-                {statusName}
-              </span>
+              <StatusBadge label={statusName} className={getAssetStatusClass(statusName)} bordered />
             </div>
             <div className="flex flex-wrap gap-3 text-muted-foreground text-sm">
               <span className="flex items-center gap-1">
@@ -333,13 +314,11 @@ export default function AssetDetailPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-muted-foreground text-xs font-mono">#{link.ticket?.id}</span>
-                        <span
-                          className={`text-xs px-1.5 py-0.5 rounded bg-muted ${
-                            ticketStatusColors[link.ticket?.status ?? ''] ?? 'text-muted-foreground'
-                          }`}
-                        >
-                          {link.ticket?.status?.replace('_', ' ')}
-                        </span>
+                        <StatusBadge
+                          label={getTicketStatusLabel(link.ticket?.status ?? '')}
+                          className={getTicketStatusClass(link.ticket?.status ?? '')}
+                          size="xs"
+                        />
                         <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                           {link.relationship_type === 'AFFECTED_ASSET' ? 'Affected' : 'Requested'}
                         </span>

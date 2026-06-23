@@ -123,6 +123,7 @@ func main() {
 			tickets.GET("/:id/audit", handlers.GetTicketAuditLogs)
 			tickets.PUT("/:id", handlers.UpdateTicket)
 			tickets.POST("/:id/accept", handlers.AcceptTicket)
+			tickets.POST("/:id/escalate", handlers.EscalateTicket)
 			tickets.DELETE("/:id", handlers.DeleteTicket)
 
 			// Comment routes (nested under tickets)

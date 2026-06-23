@@ -73,7 +73,7 @@ export default function CreateTicketPage() {
   };
 
   return (
-    <PageContainer className="max-w-3xl space-y-6">
+    <PageContainer spacing="comfortable" className="max-w-3xl">
       <PageHeader
         title="Create New Ticket"
         subtitle="Describe your issue and we'll get it resolved."

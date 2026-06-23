@@ -102,7 +102,7 @@ export default function UsersPage() {
     locations.find((l) => l.id === id)?.name ?? '—';
 
   return (
-    <PageContainer className="space-y-5">
+    <PageContainer spacing="compact">
       {/* Feedback toast */}
       {feedback && (
         <div className={`flex items-center gap-2 p-4 rounded-xl text-sm font-medium ${feedback.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800/50' : 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800/50'}`}>

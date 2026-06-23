@@ -640,7 +640,7 @@ export default function ITAMSettingsPage() {
   }
 
   return (
-    <PageContainer className="space-y-6">
+    <PageContainer spacing="comfortable">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">

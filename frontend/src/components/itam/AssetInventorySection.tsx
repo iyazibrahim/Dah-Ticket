@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState, useCallback, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Package, Filter, ChevronLeft, ChevronRight,
   Edit2, Trash2, AlertTriangle, Tag, Eye, ChevronDown,
@@ -25,13 +25,8 @@ type ResolveState = {
   target_asset_id?: number;
 };
 
-const statusColors: Record<string, string> = {
-  'In Use': 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30',
-  'Available': 'bg-sky-500/15 text-sky-500 border-sky-500/30',
-  'In Repair': 'bg-amber-500/15 text-amber-500 border-amber-500/30',
-  'Decommissioned': 'bg-muted text-muted-foreground border-border',
-  'Lost / Stolen': 'bg-rose-500/15 text-rose-500 border-rose-500/30',
-};
+import StatusBadge from '../ui/StatusBadge';
+import { getAssetStatusClass } from '../../lib/statusBadges';
 
 function downloadBlob(blob: Blob, fileName: string) {
   const url = window.URL.createObjectURL(blob);
@@ -85,9 +80,11 @@ function formatDisplayAssetTag(asset: Pick<Asset, 'asset_tag' | 'location'>) {
 interface AssetInventorySectionProps {
   variant?: 'standalone' | 'embedded';
   forcedLocationId?: number;
+  hideLocationFilter?: boolean;
 }
 
-export default function AssetInventorySection({ variant = 'standalone', forcedLocationId }: AssetInventorySectionProps) {
+export default function AssetInventorySection({ variant = 'standalone', forcedLocationId, hideLocationFilter = false }: AssetInventorySectionProps) {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isStaff, isFullAdmin, isDelegatedAdmin, hasAdminElevation } = usePermissions();
   const isAdmin = isFullAdmin || isDelegatedAdmin || hasAdminElevation;
@@ -109,11 +106,17 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category_id') ?? '');
   const [typeFilter, setTypeFilter] = useState(searchParams.get('type_id') ?? '');
   const [locationFilter, setLocationFilter] = useState(searchParams.get('location_id') ?? '');
-  const effectiveLocationFilter = forcedLocationId != null ? String(forcedLocationId) : locationFilter;
+  const effectiveLocationFilter = forcedLocationId != null
+    ? String(forcedLocationId)
+    : (embedded && hideLocationFilter ? (searchParams.get('location_id') ?? '') : locationFilter);
   const [assignedFilter, setAssignedFilter] = useState(
     searchParams.get('unassigned') === '1' ? 'unassigned' : (searchParams.get('assigned_user_id') ?? ''),
   );
   const [warrantyDays, setWarrantyDays] = useState(searchParams.get('warranty_expiring_days') ?? '');
+  const [operationalBucketState, setOperationalBucketState] = useState(searchParams.get('operational_bucket') ?? '');
+  const operationalBucket = embedded
+    ? (searchParams.get('operational_bucket') ?? '')
+    : operationalBucketState;
   const [page, setPage] = useState(Number(searchParams.get('page') ?? 1));
   const [pageSize, setPageSize] = useState(Number(searchParams.get('per_page') ?? 15));
 
@@ -154,6 +157,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
         location_id: effectiveLocationFilter || undefined,
         assigned_user_id: assignedFilter || undefined,
         warranty_expiring_days: warrantyDays ? Number(warrantyDays) : undefined,
+        operational_bucket: operationalBucket || undefined,
       });
       setAssets(res.data.assets ?? []);
       setTotal(res.data.total);
@@ -161,7 +165,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter, assignedFilter, warrantyDays]);
+  }, [page, pageSize, search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter, assignedFilter, warrantyDays, operationalBucket]);
 
   useEffect(() => {
     fetchAssets();
@@ -173,10 +177,11 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
     if (effectiveLocationFilter) params.location_id = effectiveLocationFilter;
     if (assignedFilter) params.assigned_user_id = assignedFilter;
     if (warrantyDays) params.warranty_expiring_days = warrantyDays;
+    if (operationalBucket) params.operational_bucket = operationalBucket;
     if (page > 1) params.page = String(page);
     if (pageSize !== 15) params.per_page = String(pageSize);
     setSearchParams(params);
-  }, [fetchAssets, search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter, assignedFilter, warrantyDays, page, pageSize, setSearchParams]);
+  }, [fetchAssets, search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter, assignedFilter, warrantyDays, operationalBucket, page, pageSize, setSearchParams]);
 
   const handleDelete = async (id: number) => {
     setDeleting(true);
@@ -326,10 +331,11 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
     setLocationFilter('');
     setAssignedFilter('');
     setWarrantyDays('');
+    setOperationalBucketState('');
     setPage(1);
   };
 
-  const hasActiveFilters = search || statusFilter || categoryFilter || typeFilter || effectiveLocationFilter || assignedFilter || warrantyDays;
+  const hasActiveFilters = search || statusFilter || categoryFilter || typeFilter || effectiveLocationFilter || assignedFilter || warrantyDays || operationalBucket;
   const visiblePages = (() => {
     const windowSize = 5;
     const start = Math.max(1, page - Math.floor(windowSize / 2));
@@ -403,7 +409,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
             )}
 
             {isStaff && (
-              <Link to="/itam/assets/new" className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-500/20">
+              <Link to="/itam/assets/new" className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-500/20">
                 <Plus size={16} /> Add Asset
               </Link>
             )}
@@ -464,12 +470,12 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
             type="button"
             onClick={() => setShowFilters(!showFilters)}
             className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-              showFilters || hasActiveFilters ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
+              showFilters || hasActiveFilters ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
             }`}
           >
             <Filter size={14} /> Filters
           </button>
-          <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-colors">
+          <button type="submit" className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm transition-colors">
             Search
           </button>
         </form>
@@ -488,8 +494,8 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
               <option value="">All Types</option>
               {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-            {!forcedLocationId && (
-            <select value={locationFilter} onChange={(e) => { setLocationFilter(e.target.value); setPage(1); }} className="px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-blue-500">
+            {!forcedLocationId && !hideLocationFilter && (
+            <select value={locationFilter} onChange={(e) => { setLocationFilter(e.target.value); setPage(1); }} className="px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary">
               <option value="">All Locations</option>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
@@ -539,9 +545,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                       </div>
                       {asset.serial_number && <div className="text-xs text-muted-foreground mt-1">S/N: {asset.serial_number}</div>}
                     </div>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusColors[asset.status?.name ?? ''] ?? 'bg-muted text-muted-foreground border-border'}`}>
-                      {asset.status?.name ?? '-'}
-                    </span>
+                    <StatusBadge label={asset.status?.name ?? '-'} className={getAssetStatusClass(asset.status?.name ?? '')} size="xs" bordered />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-xs">
@@ -601,14 +605,18 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                 </thead>
                 <tbody className="divide-y divide-border">
                   {assets.map((asset) => (
-                    <tr key={asset.id} className="hover:bg-muted/40 transition-colors group">
+                    <tr
+                      key={asset.id}
+                      onClick={() => navigate(`/itam/assets/${asset.id}`)}
+                      className="hover:bg-muted/40 transition-colors group cursor-pointer"
+                    >
                       <td className="px-4 py-3">
                         <div className="flex items-start gap-3">
                           <div className="w-9 h-9 rounded-lg bg-primary/10 border border-border flex items-center justify-center shrink-0 mt-0.5">
                             <Package size={16} className="text-primary" />
                           </div>
                           <div>
-                            <Link to={`/itam/assets/${asset.id}`} className="text-foreground font-medium hover:text-blue-500 transition-colors line-clamp-1">
+                            <Link to={`/itam/assets/${asset.id}`} onClick={(e) => e.stopPropagation()} className="text-foreground font-medium hover:text-primary transition-colors line-clamp-1">
                               {asset.name}
                             </Link>
                             <div className="flex items-center gap-2 mt-0.5">
@@ -623,9 +631,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                         <div className="text-muted-foreground text-xs">{asset.category?.name ?? '-'}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusColors[asset.status?.name ?? ''] ?? 'bg-muted text-muted-foreground border-border'}`}>
-                          {asset.status?.name ?? '-'}
-                        </span>
+                        <StatusBadge label={asset.status?.name ?? '-'} className={getAssetStatusClass(asset.status?.name ?? '')} size="xs" bordered />
                       </td>
                       <td className="px-4 py-3">
                         {asset.assigned_user ? (
@@ -638,11 +644,11 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                         <span className="text-muted-foreground text-xs">{asset.location?.name ?? '-'}</span>
                       </td>
                       <td className="px-4 py-3"><WarrantyBadge date={asset.warranty_end_date} /></td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <Link to={`/itam/assets/${asset.id}`} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="View"><Eye size={15} /></Link>
                           {isStaff && <Link to={`/itam/assets/${asset.id}/edit`} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Edit"><Edit2 size={15} /></Link>}
-                          {isStaff && <button onClick={() => setDeleteConfirm(asset.id)} className="p-1.5 rounded-lg hover:bg-rose-500/20 text-muted-foreground hover:text-rose-500 transition-colors" title="Delete"><Trash2 size={15} /></button>}
+                          {isStaff && <button type="button" onClick={() => setDeleteConfirm(asset.id)} className="p-1.5 rounded-lg hover:bg-rose-500/20 text-muted-foreground hover:text-rose-500 transition-colors" title="Delete"><Trash2 size={15} /></button>}
                         </div>
                       </td>
                     </tr>
@@ -673,7 +679,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
               <button
                 key={pageNumber}
                 onClick={() => setPage(pageNumber)}
-                className={`min-w-9 px-3 py-1.5 rounded-lg border text-sm transition-colors ${pageNumber === page ? 'bg-blue-600 border-blue-600 text-white' : 'bg-card border-border text-muted-foreground hover:bg-muted'}`}
+                className={`min-w-9 px-3 py-1.5 rounded-lg border text-sm transition-colors ${pageNumber === page ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground hover:bg-muted'}`}
               >
                 {pageNumber}
               </button>
@@ -800,7 +806,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
               <button
                 onClick={startImportFromModal}
                 disabled={importing}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm disabled:opacity-50"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm disabled:opacity-50"
               >
                 {importing ? 'Processing...' : 'Preview Import'}
               </button>
