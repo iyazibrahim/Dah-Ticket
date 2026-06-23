@@ -23,6 +23,9 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /app/main .
 
+RUN apk add --no-cache ca-certificates wget \
+  && mkdir -p /app/uploads
+
 # Expose port
 EXPOSE 8080
 
