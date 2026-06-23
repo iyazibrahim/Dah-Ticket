@@ -173,6 +173,8 @@ func main() {
 		{
 			itam.GET("/assets", handlers.ListAssets)
 			itam.POST("/assets", handlers.CreateAsset)
+			itam.POST("/assets/bulk-delete", handlers.BulkDeleteAssets)
+			itam.POST("/assets/bulk-assign", handlers.BulkAssignAssets)
 			itam.GET("/assets/:id", handlers.GetAsset)
 			itam.GET("/assets/:id/qr-token", handlers.GetAssetQRToken)
 			itam.PATCH("/assets/:id", handlers.UpdateAsset)

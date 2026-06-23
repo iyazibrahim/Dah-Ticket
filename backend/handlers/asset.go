@@ -68,48 +68,9 @@ func ListAssets(c *gin.Context) {
 		perPage = 20
 	}
 
-	query := database.DB.Model(&models.Asset{}).Where("is_active = ?", true)
-
-	scopedLocationID, ok := EnforceLocationQuery(c)
+	query, ok := buildAssetListQueryFromContext(c)
 	if !ok {
 		return
-	}
-
-	// Filters
-	if search := c.Query("search"); search != "" {
-		query = query.Where("name ILIKE ? OR asset_tag ILIKE ? OR serial_number ILIKE ?",
-			"%"+search+"%", "%"+search+"%", "%"+search+"%")
-	}
-	if statusID := c.Query("status_id"); statusID != "" {
-		query = query.Where("status_id = ?", statusID)
-	}
-	if categoryID := c.Query("category_id"); categoryID != "" {
-		query = query.Where("category_id = ?", categoryID)
-	}
-	if typeID := c.Query("type_id"); typeID != "" {
-		query = query.Where("type_id = ?", typeID)
-	}
-	if locationID := c.Query("location_id"); locationID != "" {
-		query = query.Where("location_id = ?", locationID)
-	} else if scopedLocationID != "" {
-		query = query.Where("location_id = ?", scopedLocationID)
-	}
-	if assignedUserID := c.Query("assigned_user_id"); assignedUserID != "" {
-		if assignedUserID == "unassigned" {
-			query = query.Where("assigned_user_id IS NULL")
-		} else {
-			query = query.Where("assigned_user_id = ?", assignedUserID)
-		}
-	}
-	// Warranty expiry filter: show assets expiring within N days
-	if warrantyDays := c.Query("warranty_expiring_days"); warrantyDays != "" {
-		if days, err := strconv.Atoi(warrantyDays); err == nil {
-			cutoff := time.Now().AddDate(0, 0, days)
-			query = query.Where("warranty_end_date IS NOT NULL AND warranty_end_date <= ?", cutoff)
-		}
-	}
-	if operationalBucket := c.Query("operational_bucket"); operationalBucket != "" {
-		query = applyOperationalBucketFilter(query, operationalBucket)
 	}
 
 	var total int64

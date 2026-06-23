@@ -1,11 +1,12 @@
-﻿import { useEffect, useState, useCallback, useRef } from 'react';
+﻿import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Search, Plus, Package, Filter, ChevronLeft, ChevronRight,
   Edit2, Trash2, AlertTriangle, Tag, Eye, ChevronDown,
-  Upload, Download, QrCode,
+  Upload, Download, QrCode, UserPlus,
 } from 'lucide-react';
 import { itamAPI } from '../../services/itamAPI';
+import api from '../../services/api';
 import { usePermissions } from '../../hooks/usePermissions';
 import type {
   Asset,
@@ -18,6 +19,7 @@ import type {
   ImportResolveDecision,
   ImportPreviewResponse,
   Location,
+  AssetListFilterParams,
 } from '../../types/itam';
 
 type ResolveState = {
@@ -134,6 +136,212 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
   const [importSheetScope, setImportSheetScope] = useState<ImportSheetScope>('masterlist_only');
   const [importQuantityMode, setImportQuantityMode] = useState<ImportQuantityMode>('single_asset_per_row');
   const [targetSheetName, setTargetSheetName] = useState('masterlist');
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedMeta, setSelectedMeta] = useState<Map<number, { name: string; tag: string }>>(new Map());
+  const [selectAllMatching, setSelectAllMatching] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
+  const [bulkAssignUserId, setBulkAssignUserId] = useState('');
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [agents, setAgents] = useState<{ id: number; first_name: string; last_name: string }[]>([]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    setSelectedMeta(new Map());
+    setSelectAllMatching(false);
+  }, []);
+
+  const selectionFilterKey = useMemo(
+    () => JSON.stringify({
+      search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter,
+      assignedFilter, warrantyDays, operationalBucket, pageSize,
+    }),
+    [search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter, assignedFilter, warrantyDays, operationalBucket, pageSize],
+  );
+
+  const [prevSelectionFilterKey, setPrevSelectionFilterKey] = useState(selectionFilterKey);
+  if (prevSelectionFilterKey !== selectionFilterKey) {
+    setPrevSelectionFilterKey(selectionFilterKey);
+    setSelectedIds(new Set());
+    setSelectedMeta(new Map());
+    setSelectAllMatching(false);
+  }
+
+  useEffect(() => {
+    if (!isStaff) return;
+    api.get('/agents').then((res) => setAgents(res.data.agents ?? [])).catch(() => setAgents([]));
+  }, [isStaff]);
+
+  const buildBulkFilters = useCallback((): AssetListFilterParams => ({
+    search: search || undefined,
+    status_id: statusFilter || undefined,
+    category_id: categoryFilter || undefined,
+    type_id: typeFilter || undefined,
+    location_id: effectiveLocationFilter || undefined,
+    assigned_user_id: assignedFilter || undefined,
+    warranty_expiring_days: warrantyDays || undefined,
+    operational_bucket: operationalBucket || undefined,
+  }), [search, statusFilter, categoryFilter, typeFilter, effectiveLocationFilter, assignedFilter, warrantyDays, operationalBucket]);
+
+  const buildBulkPayload = useCallback(() => {
+    if (selectAllMatching) {
+      return { select_all: true as const, filters: buildBulkFilters() };
+    }
+    return { asset_ids: Array.from(selectedIds) };
+  }, [selectAllMatching, selectedIds, buildBulkFilters]);
+
+  const selectedCount = selectAllMatching ? total : selectedIds.size;
+  const hasSelection = selectAllMatching || selectedIds.size > 0;
+  const allOnPageSelected = assets.length > 0 && (selectAllMatching || assets.every((a) => selectedIds.has(a.id)));
+  const someOnPageSelected = selectAllMatching || assets.some((a) => selectedIds.has(a.id));
+  const showSelectAllMatchingBanner = !selectAllMatching && allOnPageSelected && total > assets.length;
+
+  const isAssetSelected = (assetId: number) => selectAllMatching || selectedIds.has(assetId);
+
+  const toggleAssetSelection = (asset: Asset) => {
+    if (selectAllMatching) {
+      setSelectAllMatching(false);
+      const nextIds = new Set<number>();
+      const nextMeta = new Map<number, { name: string; tag: string }>();
+      assets.forEach((a) => {
+        if (a.id !== asset.id) {
+          nextIds.add(a.id);
+          nextMeta.set(a.id, { name: a.name, tag: formatDisplayAssetTag(a) });
+        }
+      });
+      setSelectedIds(nextIds);
+      setSelectedMeta(nextMeta);
+      return;
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(asset.id)) next.delete(asset.id);
+      else next.add(asset.id);
+      return next;
+    });
+    setSelectedMeta((prev) => {
+      const next = new Map(prev);
+      if (next.has(asset.id)) next.delete(asset.id);
+      else next.set(asset.id, { name: asset.name, tag: formatDisplayAssetTag(asset) });
+      return next;
+    });
+  };
+
+  const togglePageSelection = () => {
+    if (selectAllMatching) {
+      clearSelection();
+      return;
+    }
+    const pageAllSelected = assets.length > 0 && assets.every((a) => selectedIds.has(a.id));
+    if (pageAllSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        assets.forEach((a) => next.delete(a.id));
+        return next;
+      });
+      setSelectedMeta((prev) => {
+        const next = new Map(prev);
+        assets.forEach((a) => next.delete(a.id));
+        return next;
+      });
+      return;
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      assets.forEach((a) => next.add(a.id));
+      return next;
+    });
+    setSelectedMeta((prev) => {
+      const next = new Map(prev);
+      assets.forEach((a) => next.set(a.id, { name: a.name, tag: formatDisplayAssetTag(a) }));
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkActionLoading(true);
+    try {
+      const res = await itamAPI.bulkDeleteAssets(buildBulkPayload());
+      const { processed, failed, errors } = res.data;
+      if (failed > 0) {
+        window.alert(`Deleted ${processed} asset(s). ${failed} failed.\n${errors.slice(0, 5).map((e) => `#${e.asset_id}: ${e.error}`).join('\n')}`);
+      }
+      setShowBulkDeleteModal(false);
+      clearSelection();
+      fetchAssets();
+    } catch (error: unknown) {
+      window.alert(getApiErrorMessage(error, 'Bulk delete failed'));
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkAssign = async () => {
+    setBulkActionLoading(true);
+    try {
+      const unassign = bulkAssignUserId === '';
+      const payload = {
+        ...buildBulkPayload(),
+        ...(unassign ? { unassign: true } : { assigned_user_id: Number(bulkAssignUserId) }),
+      };
+      const res = await itamAPI.bulkAssignAssets(payload);
+      const { processed, failed, errors } = res.data;
+      if (failed > 0) {
+        window.alert(`Updated ${processed} asset(s). ${failed} failed.\n${errors.slice(0, 5).map((e) => `#${e.asset_id}: ${e.error}`).join('\n')}`);
+      }
+      setShowBulkAssignModal(false);
+      setBulkAssignUserId('');
+      clearSelection();
+      fetchAssets();
+    } catch (error: unknown) {
+      window.alert(getApiErrorMessage(error, 'Bulk assign failed'));
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const bulkActionButtons = isStaff ? (
+    <>
+      <button
+        type="button"
+        onClick={() => setShowBulkAssignModal(true)}
+        disabled={!hasSelection}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-xs text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <UserPlus size={14} /> Bulk Assign
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowBulkDeleteModal(true)}
+        disabled={!hasSelection}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-rose-500/30 rounded-lg text-xs text-rose-500 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Trash2 size={14} /> Bulk Delete
+      </button>
+    </>
+  ) : null;
+
+  const bulkActionButtonsStandalone = isStaff ? (
+    <>
+      <button
+        type="button"
+        onClick={() => setShowBulkAssignModal(true)}
+        disabled={!hasSelection}
+        className="inline-flex items-center gap-1.5 px-3 py-2 border border-border rounded-lg text-sm text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <UserPlus size={14} /> Bulk Assign
+      </button>
+      <button
+        type="button"
+        onClick={() => setShowBulkDeleteModal(true)}
+        disabled={!hasSelection}
+        className="inline-flex items-center gap-1.5 px-3 py-2 border border-rose-500/30 rounded-lg text-sm text-rose-500 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Trash2 size={14} /> Bulk Delete
+      </button>
+    </>
+  ) : null;
 
   useEffect(() => {
     Promise.all([itamAPI.getCategories(), itamAPI.getStatuses(), itamAPI.getTypes(), itamAPI.getLocations()]).then(([cats, stats, types, locs]) => {
@@ -408,6 +616,8 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
               </>
             )}
 
+            {bulkActionButtonsStandalone}
+
             {isStaff && (
               <Link to="/itam/assets/new" className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium text-sm transition-colors shadow-lg shadow-blue-500/20">
                 <Plus size={16} /> Add Asset
@@ -444,6 +654,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                 </details>
               </>
             )}
+            {bulkActionButtons}
           </div>
         </div>
       )}
@@ -520,6 +731,30 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
       </div>
 
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        {hasSelection && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-3 border-b border-border bg-primary/5 text-sm">
+            <div className="text-foreground">
+              {selectAllMatching
+                ? `All ${total.toLocaleString()} assets matching filters selected`
+                : `${selectedCount.toLocaleString()} asset${selectedCount === 1 ? '' : 's'} selected`}
+              {showSelectAllMatchingBanner && (
+                <span className="text-muted-foreground">
+                  {' '}·{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setSelectAllMatching(true); setSelectedIds(new Set()); setSelectedMeta(new Map()); }}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    Select all {total.toLocaleString()} assets matching filters
+                  </button>
+                </span>
+              )}
+            </div>
+            <button type="button" onClick={clearSelection} className="text-muted-foreground hover:text-foreground text-sm">
+              Clear selection
+            </button>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center h-48">
             <div className="w-7 h-7 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -533,9 +768,21 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
         ) : (
           <>
             <div className="grid gap-3 p-3 md:hidden">
-              {assets.map((asset) => (
-                <div key={asset.id} className="rounded-xl border border-border bg-background/40 p-4 space-y-3">
+              {assets.map((asset) => {
+                const selected = isAssetSelected(asset.id);
+                return (
+                <div key={asset.id} className={`rounded-xl border p-4 space-y-3 transition-colors ${selected ? 'border-primary/40 bg-primary/5' : 'border-border bg-background/40'}`}>
                   <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2 min-w-0">
+                      {isStaff && (
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => toggleAssetSelection(asset)}
+                          className="mt-1 shrink-0 cursor-pointer"
+                          aria-label={`Select ${asset.name}`}
+                        />
+                      )}
                     <div className="min-w-0">
                       <Link to={`/itam/assets/${asset.id}`} className="text-foreground font-medium hover:text-blue-500 transition-colors line-clamp-2">
                         {asset.name}
@@ -544,6 +791,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                         <Tag size={11} /> {formatDisplayAssetTag(asset)}
                       </div>
                       {asset.serial_number && <div className="text-xs text-muted-foreground mt-1">S/N: {asset.serial_number}</div>}
+                    </div>
                     </div>
                     <StatusBadge label={asset.status?.name ?? '-'} className={getAssetStatusClass(asset.status?.name ?? '')} size="xs" bordered />
                   </div>
@@ -587,13 +835,26 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                     )}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
 
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
+                    {isStaff && (
+                      <th className="px-4 py-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={allOnPageSelected}
+                          ref={(el) => { if (el) el.indeterminate = someOnPageSelected && !allOnPageSelected; }}
+                          onChange={togglePageSelection}
+                          className="cursor-pointer"
+                          aria-label="Select all on page"
+                        />
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left text-muted-foreground font-medium uppercase text-xs tracking-wider">Asset</th>
                     <th className="px-4 py-3 text-left text-muted-foreground font-medium uppercase text-xs tracking-wider">Type / Category</th>
                     <th className="px-4 py-3 text-left text-muted-foreground font-medium uppercase text-xs tracking-wider">Status</th>
@@ -604,12 +865,25 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {assets.map((asset) => (
+                  {assets.map((asset) => {
+                    const selected = isAssetSelected(asset.id);
+                    return (
                     <tr
                       key={asset.id}
                       onClick={() => navigate(`/itam/assets/${asset.id}`)}
-                      className="hover:bg-muted/40 transition-colors group cursor-pointer"
+                      className={`hover:bg-muted/40 transition-colors group cursor-pointer ${selected ? 'bg-primary/5' : ''}`}
                     >
+                      {isStaff && (
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleAssetSelection(asset)}
+                            className="cursor-pointer"
+                            aria-label={`Select ${asset.name}`}
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-3">
                         <div className="flex items-start gap-3">
                           <div className="w-9 h-9 rounded-lg bg-primary/10 border border-border flex items-center justify-center shrink-0 mt-0.5">
@@ -652,7 +926,8 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -706,6 +981,81 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
             <div className="flex gap-2">
               <button onClick={() => setDeleteConfirm(null)} className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors">Cancel</button>
               <button onClick={() => handleDelete(deleteConfirm)} disabled={deleting} className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50">{deleting ? 'Deleting...' : 'Delete'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center">
+                <Trash2 size={18} className="text-rose-500" />
+              </div>
+              <div>
+                <h3 className="text-foreground font-semibold">Bulk Delete Assets</h3>
+                <p className="text-muted-foreground text-xs">This action cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-muted-foreground text-sm mb-3">
+              Delete {selectedCount.toLocaleString()} selected asset{selectedCount === 1 ? '' : 's'}?
+            </p>
+            {!selectAllMatching && selectedIds.size > 0 && (
+              <ul className="text-sm text-foreground mb-5 space-y-1 max-h-32 overflow-y-auto">
+                {Array.from(selectedIds).slice(0, 5).map((id) => {
+                  const meta = selectedMeta.get(id);
+                  return (
+                    <li key={id} className="truncate">
+                      {meta ? `${meta.name} (${meta.tag})` : `Asset #${id}`}
+                    </li>
+                  );
+                })}
+                {selectedIds.size > 5 && (
+                  <li className="text-muted-foreground">…and {selectedIds.size - 5} more</li>
+                )}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => setShowBulkDeleteModal(false)} className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors">Cancel</button>
+              <button onClick={handleBulkDelete} disabled={bulkActionLoading} className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
+                {bulkActionLoading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkAssignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+                <UserPlus size={18} className="text-primary" />
+              </div>
+              <div>
+                <h3 className="text-foreground font-semibold">Bulk Assign Assets</h3>
+                <p className="text-muted-foreground text-xs">
+                  Assign {selectedCount.toLocaleString()} selected asset{selectedCount === 1 ? '' : 's'}
+                </p>
+              </div>
+            </div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Assigned User</label>
+            <select
+              value={bulkAssignUserId}
+              onChange={(e) => setBulkAssignUserId(e.target.value)}
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:border-blue-500 mb-5"
+            >
+              <option value="">Unassigned</option>
+              {agents.map((u) => (
+                <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+              ))}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowBulkAssignModal(false); setBulkAssignUserId(''); }} className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors">Cancel</button>
+              <button onClick={handleBulkAssign} disabled={bulkActionLoading} className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors disabled:opacity-50">
+                {bulkActionLoading ? 'Saving...' : 'Assign'}
+              </button>
             </div>
           </div>
         </div>

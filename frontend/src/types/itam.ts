@@ -386,3 +386,36 @@ export interface CreateAssetPayload {
 }
 
 export type UpdateAssetPayload = Partial<CreateAssetPayload> & { is_active?: boolean };
+
+export interface AssetListFilterParams {
+  search?: string;
+  status_id?: string;
+  category_id?: string;
+  type_id?: string;
+  location_id?: string;
+  assigned_user_id?: string;
+  warranty_expiring_days?: string;
+  operational_bucket?: string;
+}
+
+export interface BulkAssetActionPayload {
+  asset_ids?: number[];
+  select_all?: boolean;
+  filters?: AssetListFilterParams;
+}
+
+export interface BulkAssignAssetsPayload extends BulkAssetActionPayload {
+  assigned_user_id?: number | null;
+  unassign?: boolean;
+}
+
+export interface BulkAssetActionError {
+  asset_id: number;
+  error: string;
+}
+
+export interface BulkAssetActionResponse {
+  processed: number;
+  failed: number;
+  errors: BulkAssetActionError[];
+}

@@ -45,13 +45,28 @@ func EnforceLocationWrite(c *gin.Context, locationID uint) bool {
 
 // EnforceAssetLocationWrite returns false if the user cannot access the asset's location.
 func EnforceAssetLocationWrite(c *gin.Context, asset models.Asset) bool {
+	if !canWriteAssetLocation(c, asset) {
+		denyLocationScope(c)
+		return false
+	}
+	return true
+}
+
+// canWriteAssetLocation checks location write access without writing an HTTP response.
+func canWriteAssetLocation(c *gin.Context, asset models.Asset) bool {
 	if asset.LocationID == nil {
 		user, ok := middleware.GetUser(c)
 		if ok && user.HasLocationScope() {
-			denyLocationScope(c)
 			return false
 		}
 		return true
 	}
-	return EnforceLocationWrite(c, *asset.LocationID)
+	user, ok := middleware.GetUser(c)
+	if !ok || !user.HasLocationScope() {
+		return true
+	}
+	if user.PrimaryLocationID == nil || *user.PrimaryLocationID != *asset.LocationID {
+		return false
+	}
+	return true
 }

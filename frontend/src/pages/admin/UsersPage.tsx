@@ -159,7 +159,7 @@ export default function UsersPage() {
                   <th className="px-5 py-3 text-left">Role</th>
                   <th className="px-5 py-3 text-left hidden lg:table-cell">Location (PIC)</th>
                   <th className="px-5 py-3 text-left hidden md:table-cell">Status</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -218,17 +218,19 @@ export default function UsersPage() {
                           {u.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-right space-x-2">
-                        {!u.is_super_admin && (
-                          <button onClick={() => handleToggleAdmin(u)}
-                            className="text-xs font-medium px-2 py-1.5 rounded-lg border border-border hover:bg-muted">
-                            {u.is_admin ? 'Revoke Admin' : 'Grant Admin'}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center justify-end gap-2 flex-nowrap">
+                          {!u.is_super_admin && (
+                            <button onClick={() => handleToggleAdmin(u)}
+                              className="text-xs font-medium px-2 py-1.5 rounded-lg border border-border hover:bg-muted whitespace-nowrap shrink-0">
+                              {u.is_admin ? 'Revoke Admin' : 'Grant Admin'}
+                            </button>
+                          )}
+                          <button onClick={() => handleToggleActive(u)}
+                            className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap shrink-0 ${u.is_active ? 'text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30' : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'}`}>
+                            {u.is_active ? 'Deactivate' : 'Activate'}
                           </button>
-                        )}
-                        <button onClick={() => handleToggleActive(u)}
-                          className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${u.is_active ? 'text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30' : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'}`}>
-                          {u.is_active ? 'Deactivate' : 'Activate'}
-                        </button>
+                        </div>
                       </td>
                     </tr>
                   );

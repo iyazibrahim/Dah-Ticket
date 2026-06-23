@@ -23,6 +23,9 @@ import type {
   PMSummary,
   PMFinding,
   BuildPMReportPayload,
+  BulkAssetActionPayload,
+  BulkAssignAssetsPayload,
+  BulkAssetActionResponse,
 } from '../types/itam';
 
 // --- Asset CRUD ---
@@ -69,6 +72,12 @@ export const itamAPI = {
 
   deleteAsset: (id: number): Promise<{ data: { message: string } }> =>
     api.delete(`/itam/assets/${id}`),
+
+  bulkDeleteAssets: (payload: BulkAssetActionPayload): Promise<{ data: BulkAssetActionResponse }> =>
+    api.post('/itam/assets/bulk-delete', payload),
+
+  bulkAssignAssets: (payload: BulkAssignAssetsPayload): Promise<{ data: BulkAssetActionResponse }> =>
+    api.post('/itam/assets/bulk-assign', payload),
 
   searchAssets: (q: string, params?: { location_id?: number }): Promise<{ data: { assets: Asset[] } }> =>
     api.get('/itam/assets/search', { params: { q, ...params } }),
