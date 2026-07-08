@@ -90,7 +90,7 @@ export const ticketAPI = {
   create: (data: { title: string; description: string; priority?: string; type?: string; category?: string }) =>
     api.post<{ ticket: Ticket }>('/tickets', data),
 
-  update: (id: number, data: Partial<Pick<Ticket, 'title' | 'description' | 'status' | 'priority' | 'type' | 'category' | 'hold_reason' | 'hold_note'> & { assignee_id: number | null; force_close?: boolean }>) =>
+  update: (id: number, data: Partial<Pick<Ticket, 'title' | 'description' | 'status' | 'priority' | 'type' | 'category' | 'hold_reason' | 'hold_note' | 'resolution_code' | 'resolution_note' | 'closure_code' | 'closure_note'> & { assignee_id: number | null; force_close?: boolean }>) =>
     api.put<{ ticket: Ticket }>(`/tickets/${id}`, data),
 
   accept: (id: number) =>

@@ -27,16 +27,20 @@ type CreateTicketRequest struct {
 }
 
 type UpdateTicketRequest struct {
-	Title       *string `json:"title" binding:"omitempty,min=5,max=255"`
-	Description *string `json:"description" binding:"omitempty,min=10"`
-	Status      *string `json:"status" binding:"omitempty,oneof=open in_progress on_hold resolved closed"`
-	Priority    *string `json:"priority" binding:"omitempty,oneof=low medium high critical"`
-	Type        *string `json:"type" binding:"omitempty,oneof=incident service_request problem change"`
-	Category    *string `json:"category" binding:"omitempty,max=50"`
-	AssigneeID  *uint   `json:"assignee_id"`
-	HoldReason  *string `json:"hold_reason" binding:"omitempty,oneof=awaiting_customer awaiting_vendor pending_approval blocked other"`
-	HoldNote    *string `json:"hold_note"`
-	ForceClose  bool    `json:"force_close"`
+	Title           *string `json:"title" binding:"omitempty,min=5,max=255"`
+	Description     *string `json:"description" binding:"omitempty,min=10"`
+	Status          *string `json:"status" binding:"omitempty,oneof=open in_progress on_hold resolved closed"`
+	Priority        *string `json:"priority" binding:"omitempty,oneof=low medium high critical"`
+	Type            *string `json:"type" binding:"omitempty,oneof=incident service_request problem change"`
+	Category        *string `json:"category" binding:"omitempty,max=50"`
+	AssigneeID      *uint   `json:"assignee_id"`
+	HoldReason      *string `json:"hold_reason" binding:"omitempty,oneof=awaiting_customer awaiting_vendor pending_approval blocked other"`
+	HoldNote        *string `json:"hold_note"`
+	ForceClose      bool    `json:"force_close"`
+	ResolutionCode  *string `json:"resolution_code" binding:"omitempty,oneof=fixed workaround user_education duplicate cannot_reproduce cancelled"`
+	ResolutionNote  *string `json:"resolution_note"`
+	ClosureCode     *string `json:"closure_code" binding:"omitempty,oneof=resolved_confirmed auto_closed duplicate cancelled"`
+	ClosureNote     *string `json:"closure_note"`
 }
 
 type TicketResponse struct {
@@ -54,11 +58,18 @@ type TicketResponse struct {
 	DueDate     *time.Time            `json:"due_date,omitempty"`
 	ResolvedAt  *time.Time            `json:"resolved_at,omitempty"`
 	ClosedAt    *time.Time            `json:"closed_at,omitempty"`
-	HoldReason  *models.HoldReason    `json:"hold_reason,omitempty"`
-	HoldNote    string                `json:"hold_note,omitempty"`
-	IsEscalated bool                  `json:"is_escalated"`
-	EscalatedAt *time.Time            `json:"escalated_at,omitempty"`
-	Comments    []CommentResponse     `json:"comments,omitempty"`
+	HoldReason           *models.HoldReason    `json:"hold_reason,omitempty"`
+	HoldNote             string                `json:"hold_note,omitempty"`
+	IsEscalated          bool                  `json:"is_escalated"`
+	EscalatedAt          *time.Time            `json:"escalated_at,omitempty"`
+	AssignmentAccepted   bool                  `json:"assignment_accepted"`
+	AssignmentAcceptedAt *time.Time            `json:"assignment_accepted_at,omitempty"`
+	SlaPausedAt          *time.Time            `json:"sla_paused_at,omitempty"`
+	ResolutionCode       *models.ResolutionCode `json:"resolution_code,omitempty"`
+	ResolutionNote       string                `json:"resolution_note,omitempty"`
+	ClosureCode          *models.ClosureCode   `json:"closure_code,omitempty"`
+	ClosureNote          string                `json:"closure_note,omitempty"`
+	Comments             []CommentResponse     `json:"comments,omitempty"`
 	CreatedAt   time.Time             `json:"created_at"`
 	UpdatedAt   time.Time             `json:"updated_at"`
 }
@@ -312,27 +323,37 @@ func UpdateTicket(c *gin.Context) {
 			}
 		}
 	} else if actor.IsStaffMember() {
+		canManage := models.CanManageTicketWorkflow(actor, ticket)
+
 		if req.AssigneeID != nil {
 			if !actor.CanAssignITAgents() {
 				c.JSON(http.StatusForbidden, gin.H{"error": "You do not have permission to assign tickets"})
 				return
 			}
+			if !canManage {
+				c.JSON(http.StatusForbidden, gin.H{"error": "You can only view this ticket until it is escalated"})
+				return
+			}
 		}
 		if req.Priority != nil || req.Type != nil || req.Category != nil {
-			if !actor.IsStaffMember() {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Staff access required"})
+			if !canManage {
+				c.JSON(http.StatusForbidden, gin.H{"error": "You can only view this ticket until it is escalated"})
 				return
 			}
 		}
 		if req.Status != nil {
 			newStatus := models.TicketStatus(*req.Status)
 			isAssignee := ticket.AssigneeID != nil && *ticket.AssigneeID == userID
+			hasAssignee := ticket.AssigneeID != nil
 			ctx := models.TransitionContext{
-				IsStaff:         true,
-				IsRequester:     ticket.RequesterID == userID,
-				IsAssignee:      isAssignee,
-				CanAssignAnyone: actor.CanAssignAnyone(),
-				ForceClose:      req.ForceClose,
+				IsStaff:            true,
+				IsRequester:        ticket.RequesterID == userID,
+				IsAssignee:         isAssignee,
+				CanAssignAnyone:    actor.CanAssignAnyone(),
+				CanManageWorkflow:  canManage,
+				ForceClose:         req.ForceClose,
+				HasAssignee:        hasAssignee,
+				AssignmentAccepted: ticket.AssignmentAccepted,
 			}
 			if err := models.ValidateStatusTransition(ticket.Status, newStatus, ctx); err != nil {
 				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
@@ -347,6 +368,27 @@ func UpdateTicket(c *gin.Context) {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "hold_note is required when hold reason is other"})
 					return
 				}
+			}
+			if newStatus == models.StatusResolved && ticket.Status == models.StatusInProgress {
+				if req.ResolutionCode == nil || !models.IsValidResolutionCode(*req.ResolutionCode) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "resolution_code is required when resolving a ticket"})
+					return
+				}
+				if req.ResolutionNote == nil || *req.ResolutionNote == "" {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "resolution_note is required when resolving a ticket"})
+					return
+				}
+			}
+			if newStatus == models.StatusClosed && ticket.Status == models.StatusResolved && !ctx.IsRequester {
+				if req.ClosureCode == nil || !models.IsValidClosureCode(*req.ClosureCode) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "closure_code is required when closing a resolved ticket"})
+					return
+				}
+			}
+			// open → in_progress via Start Progress requires assignment acceptance for assignee path
+			if newStatus == models.StatusInProgress && ticket.Status == models.StatusOpen && isAssignee && !ticket.AssignmentAccepted {
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "please accept the ticket assignment before starting progress"})
+				return
 			}
 		}
 	}
@@ -385,15 +427,33 @@ func UpdateTicket(c *gin.Context) {
 		if newStatus == models.StatusResolved && oldStatus != models.StatusResolved {
 			now := time.Now()
 			ticket.ResolvedAt = &now
+			if req.ResolutionCode != nil {
+				rc := models.ResolutionCode(*req.ResolutionCode)
+				ticket.ResolutionCode = &rc
+			}
+			if req.ResolutionNote != nil {
+				ticket.ResolutionNote = *req.ResolutionNote
+			}
 		} else if newStatus != models.StatusResolved {
 			ticket.ResolvedAt = nil
+			ticket.ResolutionCode = nil
+			ticket.ResolutionNote = ""
 		}
 
 		if newStatus == models.StatusClosed && oldStatus != models.StatusClosed {
 			now := time.Now()
 			ticket.ClosedAt = &now
+			if req.ClosureCode != nil {
+				cc := models.ClosureCode(*req.ClosureCode)
+				ticket.ClosureCode = &cc
+			}
+			if req.ClosureNote != nil {
+				ticket.ClosureNote = *req.ClosureNote
+			}
 		} else if newStatus != models.StatusClosed {
 			ticket.ClosedAt = nil
+			ticket.ClosureCode = nil
+			ticket.ClosureNote = ""
 		}
 
 		if newStatus == models.StatusOnHold {
@@ -402,9 +462,32 @@ func UpdateTicket(c *gin.Context) {
 			if req.HoldNote != nil {
 				ticket.HoldNote = *req.HoldNote
 			}
+			if models.HoldReasonPausesSLA(hr) {
+				now := time.Now()
+				ticket.SlaPausedAt = &now
+			}
 		} else if newStatus != models.StatusOnHold {
 			ticket.HoldReason = nil
 			ticket.HoldNote = ""
+		}
+
+		// Resume from hold: extend due_date by paused duration
+		if newStatus == models.StatusInProgress && oldStatus == models.StatusOnHold {
+			if ticket.SlaPausedAt != nil && ticket.DueDate != nil {
+				pauseDuration := time.Since(*ticket.SlaPausedAt)
+				extended := ticket.DueDate.Add(pauseDuration)
+				ticket.DueDate = &extended
+			}
+			ticket.SlaPausedAt = nil
+		}
+
+		// Starting progress marks assignment as accepted
+		if newStatus == models.StatusInProgress && oldStatus == models.StatusOpen {
+			if !ticket.AssignmentAccepted {
+				now := time.Now()
+				ticket.AssignmentAccepted = true
+				ticket.AssignmentAcceptedAt = &now
+			}
 		}
 	}
 	if req.AssigneeID != nil {
@@ -412,6 +495,8 @@ func UpdateTicket(c *gin.Context) {
 			changes = append(changes, "unassigned")
 			ticket.AssigneeID = nil
 			ticket.Assignee = nil
+			ticket.AssignmentAccepted = false
+			ticket.AssignmentAcceptedAt = nil
 		} else {
 			var assignee models.User
 			if err := database.DB.First(&assignee, *req.AssigneeID).Error; err != nil {
@@ -426,8 +511,18 @@ func UpdateTicket(c *gin.Context) {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Delegated admins can only assign tickets to IT agents"})
 				return
 			}
+			assigneeChanged := ticket.AssigneeID == nil || *ticket.AssigneeID != *req.AssigneeID
 			changes = append(changes, fmt.Sprintf("assigned to: %s %s", assignee.FirstName, assignee.LastName))
 			ticket.AssigneeID = req.AssigneeID
+			if assigneeChanged {
+				ticket.AssignmentAccepted = false
+				ticket.AssignmentAcceptedAt = nil
+				// Manager assignment keeps ticket open until agent accepts
+				if ticket.Status == models.StatusInProgress && *req.AssigneeID != userID {
+					ticket.Status = models.StatusOpen
+					changes = append(changes, "status reset to open pending acceptance")
+				}
+			}
 		}
 	}
 
@@ -482,7 +577,7 @@ func UpdateTicket(c *gin.Context) {
 		CreateInAppNotification(
 			*req.AssigneeID,
 			"Ticket Assigned",
-			fmt.Sprintf("You have been assigned to ticket #%d", ticket.ID),
+			fmt.Sprintf("You have been assigned to ticket #%d — please accept to begin work", ticket.ID),
 			"ticket_assigned",
 			fmt.Sprintf("/tickets/%d", ticket.ID),
 		)
@@ -523,6 +618,7 @@ func AcceptTicket(c *gin.Context) {
 
 	oldValues := map[string]interface{}{
 		"status": ticket.Status, "assignee_id": ticket.AssigneeID,
+		"assignment_accepted": ticket.AssignmentAccepted,
 	}
 
 	assigneeID := actor.ID
@@ -530,6 +626,9 @@ func AcceptTicket(c *gin.Context) {
 	ticket.Status = models.StatusInProgress
 	ticket.HoldReason = nil
 	ticket.HoldNote = ""
+	now := time.Now()
+	ticket.AssignmentAccepted = true
+	ticket.AssignmentAcceptedAt = &now
 
 	if err := database.DB.Save(&ticket).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to accept ticket"})
@@ -540,6 +639,7 @@ func AcceptTicket(c *gin.Context) {
 
 	newValues := map[string]interface{}{
 		"status": ticket.Status, "assignee_id": ticket.AssigneeID,
+		"assignment_accepted": ticket.AssignmentAccepted,
 	}
 	LogAudit(c, models.AuditActionAssign, "ticket", ticket.ID,
 		ToJSON(oldValues), ToJSON(newValues),
@@ -574,8 +674,8 @@ func EscalateTicket(c *gin.Context) {
 	}
 
 	isAssignee := ticket.AssigneeID != nil && *ticket.AssigneeID == actor.ID
-	if !isAssignee && !actor.CanAssignAnyone() {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Only the assignee or a manager can escalate this ticket"})
+	if !isAssignee {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only the assignee can escalate this ticket"})
 		return
 	}
 
@@ -839,11 +939,18 @@ func toTicketResponse(t models.Ticket) TicketResponse {
 		DueDate:     t.DueDate,
 		ResolvedAt:  t.ResolvedAt,
 		ClosedAt:    t.ClosedAt,
-		HoldReason:  t.HoldReason,
-		HoldNote:    t.HoldNote,
-		IsEscalated: t.IsEscalated,
-		EscalatedAt: t.EscalatedAt,
-		CreatedAt:   t.CreatedAt,
+		HoldReason:           t.HoldReason,
+		HoldNote:             t.HoldNote,
+		IsEscalated:          t.IsEscalated,
+		EscalatedAt:          t.EscalatedAt,
+		AssignmentAccepted:   t.AssignmentAccepted,
+		AssignmentAcceptedAt: t.AssignmentAcceptedAt,
+		SlaPausedAt:          t.SlaPausedAt,
+		ResolutionCode:       t.ResolutionCode,
+		ResolutionNote:       t.ResolutionNote,
+		ClosureCode:          t.ClosureCode,
+		ClosureNote:          t.ClosureNote,
+		CreatedAt:            t.CreatedAt,
 		UpdatedAt:   t.UpdatedAt,
 	}
 

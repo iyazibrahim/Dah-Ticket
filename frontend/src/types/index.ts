@@ -56,6 +56,13 @@ export interface Ticket {
   hold_note?: string;
   is_escalated?: boolean;
   escalated_at?: string;
+  assignment_accepted?: boolean;
+  assignment_accepted_at?: string;
+  sla_paused_at?: string;
+  resolution_code?: 'fixed' | 'workaround' | 'user_education' | 'duplicate' | 'cannot_reproduce' | 'cancelled';
+  resolution_note?: string;
+  closure_code?: 'resolved_confirmed' | 'auto_closed' | 'duplicate' | 'cancelled';
+  closure_note?: string;
   created_at: string;
   updated_at: string;
 }

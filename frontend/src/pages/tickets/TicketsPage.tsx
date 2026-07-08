@@ -5,7 +5,7 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../contexts/AuthContext';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { canShowListAccept, getListAcceptLabel, getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
-import { statusLabels } from '../../lib/ticketWorkflow';
+import { statusLabels, canManageTicketWorkflow } from '../../lib/ticketWorkflow';
 import AssignDropdown from '../../components/AssignDropdown';
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
@@ -72,16 +72,10 @@ export default function TicketsPage() {
     fetchAgents();
   }, [isStaff]);
 
-  const quickAssign = async (ticket: Ticket, assigneeId: number | null, setInProgress: boolean) => {
+  const quickAssign = async (ticket: Ticket, assigneeId: number | null) => {
     setQuickActionLoading(ticket.id);
     try {
-      const payload: Partial<Pick<Ticket, 'status'> & { assignee_id: number | null }> = {
-        assignee_id: assigneeId,
-      };
-      if (setInProgress && ticket.status === 'open') {
-        payload.status = 'in_progress';
-      }
-      await ticketAPI.update(ticket.id, payload);
+      await ticketAPI.update(ticket.id, { assignee_id: assigneeId });
       await fetchTickets();
     } catch (err) {
       console.error('Failed quick action update:', err);
@@ -100,6 +94,7 @@ export default function TicketsPage() {
 
   const canShowAssign = (ticket: Ticket) => {
     if (!perms.canAssignITAgents) return false;
+    if (!canManageTicketWorkflow(ticket, user?.id, perms.canAssignAnyone)) return false;
     return !ticket.assignee_id && (ticket.status === 'open' || ticket.status === 'on_hold');
   };
 
@@ -151,7 +146,7 @@ export default function TicketsPage() {
 
     return (
       <div className="flex max-w-full items-center gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-        {canShowListAccept(ticket, user?.id) && (
+        {canShowListAccept(ticket, user?.id, perms.canAssignAnyone) && (
           <button
             type="button"
             disabled={quickActionLoading === ticket.id}
@@ -171,7 +166,7 @@ export default function TicketsPage() {
             onSelect={(val) => {
               const selected = Number(val);
               if (!Number.isNaN(selected) && selected > 0) {
-                void quickAssign(ticket, selected, true);
+                void quickAssign(ticket, selected);
               }
             }}
           />

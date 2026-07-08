@@ -41,6 +41,9 @@ export function getActionButtonClasses(action: TicketAction): string {
   if (action.type === 'escalate') {
     return `${actionButtonBase} bg-red-100 text-red-900 border-red-300 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-700 dark:hover:bg-red-900/60`;
   }
+  if (action.type === 'resolve' || action.type === 'close') {
+    return `${actionButtonBase} bg-emerald-100 text-emerald-900 border-emerald-300 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-700 dark:hover:bg-emerald-900/60`;
+  }
 
   switch (action.label) {
     case 'Start Progress':
@@ -60,9 +63,19 @@ export function getActionButtonClasses(action: TicketAction): string {
   }
 }
 
-export function canShowListAccept(ticket: { status: string; assignee_id?: number }, userId?: number): boolean {
+export function canShowListAccept(
+  ticket: { status: string; assignee_id?: number; assignment_accepted?: boolean; is_escalated?: boolean },
+  userId?: number,
+  canAssignAnyone?: boolean,
+): boolean {
+  if (!userId) return false;
+
   if (ticket.status === 'open') {
-    return !ticket.assignee_id || ticket.assignee_id === userId;
+    if (!ticket.assignee_id) return true;
+    if (ticket.assignee_id === userId) return true;
+    // Managers cannot accept tickets assigned to others
+    if (canAssignAnyone && ticket.assignee_id !== userId && !ticket.is_escalated) return false;
+    return ticket.assignee_id === userId;
   }
   if (ticket.status === 'on_hold') {
     return !ticket.assignee_id;
@@ -70,6 +83,10 @@ export function canShowListAccept(ticket: { status: string; assignee_id?: number
   return false;
 }
 
-export function getListAcceptLabel(ticket: { status: string }): string {
-  return ticket.status === 'on_hold' ? 'Resume' : 'Accept';
+export function getListAcceptLabel(
+  ticket: { status: string; assignee_id?: number; assignment_accepted?: boolean },
+): string {
+  if (ticket.status === 'on_hold') return 'Resume';
+  if (ticket.assignee_id && !ticket.assignment_accepted) return 'Accept Assignment';
+  return 'Accept';
 }

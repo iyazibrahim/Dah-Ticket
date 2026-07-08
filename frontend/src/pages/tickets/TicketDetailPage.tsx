@@ -13,14 +13,22 @@ import PageContainer from '../../components/PageContainer';
 import BackLink from '../../components/BackLink';
 import StatusStepper from '../../components/tickets/StatusStepper';
 import HoldReasonModal from '../../components/tickets/HoldReasonModal';
+import ResolveTicketModal from '../../components/tickets/ResolveTicketModal';
+import CloseTicketModal from '../../components/tickets/CloseTicketModal';
 import {
   holdReasonLabels,
+  resolutionCodeLabels,
+  closureCodeLabels,
   getAvailableActions,
+  canManageTicketWorkflow,
+  isPendingAssignment,
   priorityColors,
   type HoldReason,
+  type ResolutionCode,
+  type ClosureCode,
   type TicketAction,
 } from '../../lib/ticketWorkflow';
-import { getActionButtonClasses } from '../../lib/statusBadges';
+import { getActionButtonClasses, canShowListAccept, getListAcceptLabel } from '../../lib/statusBadges';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
 
@@ -35,6 +43,8 @@ export default function TicketDetailPage() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState('');
   const [showHoldModal, setShowHoldModal] = useState(false);
+  const [showResolveModal, setShowResolveModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [pendingCommentFiles, setPendingCommentFiles] = useState<File[]>([]);
   const commentFileInputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +69,10 @@ export default function TicketDetailPage() {
 
   const isRequester = ticket?.requester?.id === user?.id;
   const isAssignee = ticket?.assignee?.id === user?.id;
+  const canManage = ticket
+    ? canManageTicketWorkflow(ticket, user?.id, canAssignAnyone)
+    : false;
+  const viewOnlyManager = isStaff && canAssignAnyone && ticket?.assignee_id && !isAssignee && !ticket?.is_escalated;
 
   const pendingCommentPreviewUrls = useMemo(
     () => pendingCommentFiles.map((file) => URL.createObjectURL(file)),
@@ -249,7 +263,15 @@ export default function TicketDetailPage() {
 
   const handleStatusChange = async (
     newStatus: string,
-    options?: { hold_reason?: HoldReason; hold_note?: string; force_close?: boolean },
+    options?: {
+      hold_reason?: HoldReason;
+      hold_note?: string;
+      force_close?: boolean;
+      resolution_code?: ResolutionCode;
+      resolution_note?: string;
+      closure_code?: ClosureCode;
+      closure_note?: string;
+    },
   ) => {
     if (!ticket) return;
     try {
@@ -258,6 +280,10 @@ export default function TicketDetailPage() {
         hold_reason: options?.hold_reason,
         hold_note: options?.hold_note,
         force_close: options?.force_close,
+        resolution_code: options?.resolution_code,
+        resolution_note: options?.resolution_note,
+        closure_code: options?.closure_code,
+        closure_note: options?.closure_note,
       });
       await fetchTicket();
       await fetchExtraData();
@@ -265,6 +291,18 @@ export default function TicketDetailPage() {
       const axiosErr = err as { response?: { data?: { error?: string } } };
       alert(axiosErr.response?.data?.error || 'Failed to update status');
       throw err;
+    }
+  };
+
+  const handleAcceptTicket = async () => {
+    if (!ticket) return;
+    try {
+      await ticketAPI.accept(ticket.id);
+      await fetchTicket();
+      await fetchExtraData();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      alert(axiosErr.response?.data?.error || 'Failed to accept ticket');
     }
   };
 
@@ -285,8 +323,16 @@ export default function TicketDetailPage() {
       setShowHoldModal(true);
       return;
     }
+    if (action.type === 'resolve') {
+      setShowResolveModal(true);
+      return;
+    }
+    if (action.type === 'close') {
+      setShowCloseModal(true);
+      return;
+    }
     if (action.type === 'escalate') {
-      if (confirm('Escalate this ticket? Priority will increase and the ticket will be flagged.')) {
+      if (confirm('Escalate this ticket? Priority will increase and managers will be able to take over.')) {
         await handleEscalate();
       }
       return;
@@ -301,6 +347,14 @@ export default function TicketDetailPage() {
 
   const handleHoldConfirm = async (reason: HoldReason, note: string) => {
     await handleStatusChange('on_hold', { hold_reason: reason, hold_note: note });
+  };
+
+  const handleResolveConfirm = async (code: ResolutionCode, note: string) => {
+    await handleStatusChange('resolved', { resolution_code: code, resolution_note: note });
+  };
+
+  const handleCloseConfirm = async (code: ClosureCode, note: string) => {
+    await handleStatusChange('closed', { closure_code: code, closure_note: note });
   };
 
   const handlePriorityChange = async (newPriority: string) => {
@@ -388,6 +442,7 @@ export default function TicketDetailPage() {
         isRequester: !!isRequester,
         isAssignee: !!isAssignee,
         canAssignAnyone,
+        userId: user?.id,
       })
     : [];
 
@@ -432,6 +487,29 @@ export default function TicketDetailPage() {
         onConfirm={handleHoldConfirm}
       />
 
+      <ResolveTicketModal
+        open={showResolveModal}
+        onClose={() => setShowResolveModal(false)}
+        onConfirm={handleResolveConfirm}
+      />
+
+      <CloseTicketModal
+        open={showCloseModal}
+        onClose={() => setShowCloseModal(false)}
+        onConfirm={handleCloseConfirm}
+      />
+
+      {viewOnlyManager && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            This ticket is assigned to{' '}
+            <strong>{ticket.assignee?.first_name} {ticket.assignee?.last_name}</strong>.
+            You can view progress only until the assignee escalates it.
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main content */}
         <div className="lg:col-span-2 space-y-6">
@@ -444,6 +522,11 @@ export default function TicketDetailPage() {
               {ticket.is_escalated && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                   <AlertTriangle className="h-3 w-3" /> Escalated
+                </span>
+              )}
+              {isPendingAssignment(ticket) && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                  Pending Acceptance
                 </span>
               )}
               {ticket.status === 'on_hold' && ticket.hold_reason && (
@@ -459,6 +542,17 @@ export default function TicketDetailPage() {
             </div>
             {ticket.status === 'on_hold' && ticket.hold_note && (
               <p className="text-xs text-muted-foreground mb-3 italic">Hold note: {ticket.hold_note}</p>
+            )}
+            {ticket.sla_paused_at && ticket.status === 'on_hold' && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">SLA clock is paused while on hold.</p>
+            )}
+            {ticket.resolution_note && (
+              <div className="mb-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                  Resolution{ticket.resolution_code ? `: ${resolutionCodeLabels[ticket.resolution_code]}` : ''}
+                </p>
+                <p className="text-sm text-emerald-900 dark:text-emerald-200 mt-1">{ticket.resolution_note}</p>
+              </div>
             )}
             <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
 
@@ -736,6 +830,15 @@ export default function TicketDetailPage() {
             {/* Action Buttons */}
             <div className="flex flex-col gap-2 pb-4 border-b border-border">
               <label className="block text-xs text-muted-foreground mb-1">Actions</label>
+              {ticket && canShowListAccept(ticket, user?.id, canAssignAnyone) && (
+                <button
+                  type="button"
+                  onClick={handleAcceptTicket}
+                  className={`w-full transition-colors ${getActionButtonClasses({ type: 'transition', status: 'in_progress', label: 'Start Progress', variant: 'primary' })}`}
+                >
+                  {getListAcceptLabel(ticket)}
+                </button>
+              )}
               {primaryActions.length > 0 ? (
                 primaryActions.map((action, idx) => (
                   <button
@@ -785,7 +888,7 @@ export default function TicketDetailPage() {
               )}
             </div>
 
-            {isStaff && (
+            {isStaff && canManage && (
               <>
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">Ticket Type</label>
@@ -829,7 +932,7 @@ export default function TicketDetailPage() {
                   </select>
                   {!ticket.assignee_id && (
                     <button 
-                      onClick={() => handleAssigneeChange(user?.id.toString() || "")}
+                      onClick={() => handleAcceptTicket()}
                       className="w-full mt-2 py-1.5 bg-primary/10 text-primary hover:bg-primary/20 transition-colors rounded-lg text-xs font-medium">
                       Assign to Me
                     </button>
@@ -861,6 +964,18 @@ export default function TicketDetailPage() {
                   <Clock className="h-4 w-4 text-emerald-500" />
                   <span className="text-muted-foreground">Resolved:</span>
                   <span className="text-emerald-600">{formatDate(ticket.resolved_at)}</span>
+                </div>
+              )}
+              {ticket.closure_code && (
+                <div className="flex items-start gap-2 text-sm">
+                  <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <span className="text-muted-foreground">Closure: </span>
+                    <span className="text-foreground">{closureCodeLabels[ticket.closure_code]}</span>
+                    {ticket.closure_note && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{ticket.closure_note}</p>
+                    )}
+                  </div>
                 </div>
               )}
               {ticket.closed_at && (

@@ -64,7 +64,7 @@ func GetAnalyticsOverview(c *gin.Context) {
 		Count(&stats.ResolvedToday)
 
 	database.DB.Model(&models.Ticket{}).
-		Where("due_date < ? AND status NOT IN ?", time.Now(), []string{"resolved", "closed"}).
+		Where("due_date < ? AND status NOT IN ? AND sla_paused_at IS NULL", time.Now(), []string{"resolved", "closed"}).
 		Count(&stats.OverdueTickets)
 
 	database.DB.Model(&models.User{}).Where("is_active = ?", true).Count(&stats.TotalUsers)
@@ -195,7 +195,7 @@ func GetAnalyticsSLA(c *gin.Context) {
 
 	// Currently overdue (not yet resolved)
 	database.DB.Model(&models.Ticket{}).
-		Where("due_date < ? AND status NOT IN ?", time.Now(), []string{"resolved", "closed"}).
+		Where("due_date < ? AND status NOT IN ? AND sla_paused_at IS NULL", time.Now(), []string{"resolved", "closed"}).
 		Count(&overdue)
 
 	// Resolved but after due date (breached SLA)

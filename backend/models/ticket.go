@@ -62,6 +62,19 @@ type Ticket struct {
 	IsEscalated bool       `gorm:"default:false" json:"is_escalated"`
 	EscalatedAt *time.Time `json:"escalated_at,omitempty"`
 
+	// Assignment acceptance (manager assigns → agent must accept)
+	AssignmentAccepted   bool       `gorm:"default:false" json:"assignment_accepted"`
+	AssignmentAcceptedAt *time.Time `json:"assignment_accepted_at,omitempty"`
+
+	// SLA pause while on hold (customer/vendor waits)
+	SlaPausedAt *time.Time `json:"sla_paused_at,omitempty"`
+
+	// Resolution & closure records (ITIL)
+	ResolutionCode *ResolutionCode `gorm:"type:varchar(30)" json:"resolution_code,omitempty"`
+	ResolutionNote string          `gorm:"type:text" json:"resolution_note,omitempty"`
+	ClosureCode    *ClosureCode    `gorm:"type:varchar(30)" json:"closure_code,omitempty"`
+	ClosureNote    string          `gorm:"type:text" json:"closure_note,omitempty"`
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
