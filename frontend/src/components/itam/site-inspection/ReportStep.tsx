@@ -110,7 +110,7 @@ export default function ReportStep({
               </button>
             )}
           </div>
-          <div className="p-3 space-y-1.5 max-h-[400px] overflow-y-auto">
+          <div className="p-3 space-y-1.5 max-h-none md:max-h-[400px] md:overflow-y-auto">
             {loading ? (
               <p className="text-xs text-muted-foreground text-center py-8">Loading…</p>
             ) : filteredFindings.length === 0 ? (

@@ -16,7 +16,7 @@ const spacingClasses: Record<Spacing, string> = {
 export default function PageContainer({ children, className = '', spacing }: Props) {
   const spacingClass = spacing ? spacingClasses[spacing] : '';
   return (
-    <div className={`w-full mx-auto max-w-7xl xl:max-w-[1400px] 2xl:max-w-[1600px] ${spacingClass} ${className}`}>
+    <div className={`w-full mx-auto max-w-7xl xl:max-w-[1400px] 2xl:max-w-[1600px] pb-2 md:pb-0 ${spacingClass} ${className}`}>
       {children}
     </div>
   );

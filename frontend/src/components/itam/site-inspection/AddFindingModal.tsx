@@ -64,7 +64,7 @@ export default function AddFindingModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} className="max-w-lg !p-0 !space-y-0 max-h-[92vh] overflow-hidden flex flex-col">
+    <Modal open={open} onClose={onClose} unstyled className="max-w-lg">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
         <h3 className="text-foreground font-semibold">
           {editingFinding ? 'Edit Finding' : 'Add Finding'}
@@ -78,7 +78,7 @@ export default function AddFindingModal({
         </button>
       </div>
 
-      <div className="overflow-y-auto flex-1 px-5 py-4 space-y-3">
+      <div className="overflow-y-auto flex-1 min-h-0 px-5 py-4 space-y-3">
         <div>
           <label className="block text-xs text-muted-foreground mb-1">
             Finding Title <span className="text-rose-400">*</span>

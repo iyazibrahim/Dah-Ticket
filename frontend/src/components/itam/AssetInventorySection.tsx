@@ -8,6 +8,10 @@ import {
 import { itamAPI } from '../../services/itamAPI';
 import api from '../../services/api';
 import { usePermissions } from '../../hooks/usePermissions';
+import Modal from '../ui/Modal';
+import ModalHeader from '../ui/ModalHeader';
+import ModalFooter from '../ui/ModalFooter';
+import ConfirmModal from '../ui/ConfirmModal';
 import type {
   Asset,
   AssetCategory,
@@ -965,122 +969,106 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
         </div>
       )}
 
-      {deleteConfirm !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center">
-                <Trash2 size={18} className="text-rose-500" />
-              </div>
-              <div>
-                <h3 className="text-foreground font-semibold">Delete Asset</h3>
-                <p className="text-muted-foreground text-xs">This action cannot be undone</p>
-              </div>
+      <ConfirmModal
+        open={deleteConfirm !== null}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => deleteConfirm !== null && handleDelete(deleteConfirm)}
+        title="Delete Asset"
+        description="Are you sure you want to delete this asset? It will be removed from inventory."
+        confirmLabel="Delete"
+        loading={deleting}
+      />
+
+      <Modal open={showBulkDeleteModal} onClose={() => setShowBulkDeleteModal(false)} unstyled className="max-w-md">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center">
+              <Trash2 size={18} className="text-rose-500" />
             </div>
-            <p className="text-muted-foreground text-sm mb-5">Are you sure you want to delete this asset? It will be removed from inventory.</p>
-            <div className="flex gap-2">
-              <button onClick={() => setDeleteConfirm(null)} className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors">Cancel</button>
-              <button onClick={() => handleDelete(deleteConfirm)} disabled={deleting} className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50">{deleting ? 'Deleting...' : 'Delete'}</button>
+            <div>
+              <h3 className="text-foreground font-semibold">Bulk Delete Assets</h3>
+              <p className="text-muted-foreground text-xs">This action cannot be undone</p>
             </div>
           </div>
+          <p className="text-muted-foreground text-sm mb-3">
+            Delete {selectedCount.toLocaleString()} selected asset{selectedCount === 1 ? '' : 's'}?
+          </p>
+          {!selectAllMatching && selectedIds.size > 0 && (
+            <ul className="text-sm text-foreground mb-5 space-y-1 max-h-32 overflow-y-auto">
+              {Array.from(selectedIds).slice(0, 5).map((id) => {
+                const meta = selectedMeta.get(id);
+                return (
+                  <li key={id} className="truncate">
+                    {meta ? `${meta.name} (${meta.tag})` : `Asset #${id}`}
+                  </li>
+                );
+              })}
+              {selectedIds.size > 5 && (
+                <li className="text-muted-foreground">…and {selectedIds.size - 5} more</li>
+              )}
+            </ul>
+          )}
         </div>
-      )}
+        <ModalFooter>
+          <button type="button" onClick={() => setShowBulkDeleteModal(false)} className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors">Cancel</button>
+          <button type="button" onClick={handleBulkDelete} disabled={bulkActionLoading} className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
+            {bulkActionLoading ? 'Deleting...' : 'Delete'}
+          </button>
+        </ModalFooter>
+      </Modal>
 
-      {showBulkDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center">
-                <Trash2 size={18} className="text-rose-500" />
-              </div>
-              <div>
-                <h3 className="text-foreground font-semibold">Bulk Delete Assets</h3>
-                <p className="text-muted-foreground text-xs">This action cannot be undone</p>
-              </div>
+      <Modal open={showBulkAssignModal} onClose={() => { setShowBulkAssignModal(false); setBulkAssignUserId(''); }} unstyled className="max-w-md">
+        <div className="p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+              <UserPlus size={18} className="text-primary" />
             </div>
-            <p className="text-muted-foreground text-sm mb-3">
-              Delete {selectedCount.toLocaleString()} selected asset{selectedCount === 1 ? '' : 's'}?
-            </p>
-            {!selectAllMatching && selectedIds.size > 0 && (
-              <ul className="text-sm text-foreground mb-5 space-y-1 max-h-32 overflow-y-auto">
-                {Array.from(selectedIds).slice(0, 5).map((id) => {
-                  const meta = selectedMeta.get(id);
-                  return (
-                    <li key={id} className="truncate">
-                      {meta ? `${meta.name} (${meta.tag})` : `Asset #${id}`}
-                    </li>
-                  );
-                })}
-                {selectedIds.size > 5 && (
-                  <li className="text-muted-foreground">…and {selectedIds.size - 5} more</li>
-                )}
-              </ul>
-            )}
-            <div className="flex gap-2">
-              <button onClick={() => setShowBulkDeleteModal(false)} className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors">Cancel</button>
-              <button onClick={handleBulkDelete} disabled={bulkActionLoading} className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
-                {bulkActionLoading ? 'Deleting...' : 'Delete'}
-              </button>
+            <div>
+              <h3 className="text-foreground font-semibold">Bulk Assign Assets</h3>
+              <p className="text-muted-foreground text-xs">
+                Assign {selectedCount.toLocaleString()} selected asset{selectedCount === 1 ? '' : 's'}
+              </p>
             </div>
           </div>
+          <label className="block text-sm font-medium text-muted-foreground mb-1.5">Assigned User</label>
+          <select
+            value={bulkAssignUserId}
+            onChange={(e) => setBulkAssignUserId(e.target.value)}
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:border-blue-500"
+          >
+            <option value="">Unassigned</option>
+            {agents.map((u) => (
+              <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
+            ))}
+          </select>
         </div>
-      )}
+        <ModalFooter>
+          <button type="button" onClick={() => { setShowBulkAssignModal(false); setBulkAssignUserId(''); }} className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors">Cancel</button>
+          <button type="button" onClick={handleBulkAssign} disabled={bulkActionLoading} className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors disabled:opacity-50">
+            {bulkActionLoading ? 'Saving...' : 'Assign'}
+          </button>
+        </ModalFooter>
+      </Modal>
 
-      {showBulkAssignModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
-                <UserPlus size={18} className="text-primary" />
-              </div>
-              <div>
-                <h3 className="text-foreground font-semibold">Bulk Assign Assets</h3>
-                <p className="text-muted-foreground text-xs">
-                  Assign {selectedCount.toLocaleString()} selected asset{selectedCount === 1 ? '' : 's'}
-                </p>
-              </div>
-            </div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">Assigned User</label>
-            <select
-              value={bulkAssignUserId}
-              onChange={(e) => setBulkAssignUserId(e.target.value)}
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:outline-none focus:border-blue-500 mb-5"
-            >
-              <option value="">Unassigned</option>
-              {agents.map((u) => (
-                <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
-              ))}
-            </select>
-            <div className="flex gap-2">
-              <button onClick={() => { setShowBulkAssignModal(false); setBulkAssignUserId(''); }} className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors">Cancel</button>
-              <button onClick={handleBulkAssign} disabled={bulkActionLoading} className="flex-1 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm transition-colors disabled:opacity-50">
-                {bulkActionLoading ? 'Saving...' : 'Assign'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/55 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-2xl shadow-2xl space-y-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-foreground font-semibold text-lg">Import Assets</h3>
-                <p className="text-muted-foreground text-sm mt-1">Upload CSV/XLSX, choose sheet scope and quantity mode, then preview before commit.</p>
-              </div>
-              <button
-                onClick={() => {
-                  setShowImportModal(false);
-                  setPendingImportFile(null);
-                  setDragActive(false);
-                }}
-                className="px-3 py-1.5 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted"
-              >
-                Close
-              </button>
-            </div>
-
+      <Modal
+        open={showImportModal}
+        onClose={() => {
+          setShowImportModal(false);
+          setPendingImportFile(null);
+          setDragActive(false);
+        }}
+        className="max-w-2xl"
+      >
+        <ModalHeader
+          title="Import Assets"
+          subtitle="Upload CSV/XLSX, choose sheet scope and quantity mode, then preview before commit."
+          onClose={() => {
+            setShowImportModal(false);
+            setPendingImportFile(null);
+            setDragActive(false);
+          }}
+        />
+        <div className="space-y-5 -mt-2">
             <div
               onDragOver={(e) => {
                 e.preventDefault();
@@ -1144,6 +1132,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
 
             <div className="flex justify-end gap-2">
               <button
+                type="button"
                 onClick={() => {
                   setShowImportModal(false);
                   setPendingImportFile(null);
@@ -1154,6 +1143,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={startImportFromModal}
                 disabled={importing}
                 className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm disabled:opacity-50"
@@ -1161,32 +1151,30 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                 {importing ? 'Processing...' : 'Preview Import'}
               </button>
             </div>
-          </div>
         </div>
-      )}
+      </Modal>
 
-      {importPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-4xl shadow-2xl max-h-[85vh] overflow-hidden flex flex-col">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <h3 className="text-foreground font-semibold text-lg">Import Preview</h3>
-                <p className="text-muted-foreground text-sm mt-1">
-                  Review conflicts before committing import.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setImportPreview(null);
-                  setImportPreviewFile(null);
-                  setImportDecisions({});
-                }}
-                className="px-3 py-1.5 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted"
-              >
-                Close
-              </button>
-            </div>
-
+      <Modal
+        open={!!importPreview}
+        onClose={() => {
+          setImportPreview(null);
+          setImportPreviewFile(null);
+          setImportDecisions({});
+        }}
+        unstyled
+        className="max-w-4xl"
+      >
+        <ModalHeader
+          title="Import Preview"
+          subtitle="Review conflicts before committing import."
+          onClose={() => {
+            setImportPreview(null);
+            setImportPreviewFile(null);
+            setImportDecisions({});
+          }}
+        />
+        {importPreview && (
+        <div className="px-5 pb-5 flex flex-col flex-1 min-h-0 overflow-hidden">
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4 text-xs">
               <div className="rounded-lg border border-border p-2"><span className="text-muted-foreground">Total</span><p className="text-foreground font-semibold mt-1">{importPreview.summary.total_rows}</p></div>
               <div className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-2"><span className="text-sky-400">Effective Assets</span><p className="text-foreground font-semibold mt-1">{importPreview.summary.effective_total_rows ?? importPreview.summary.total_rows}</p></div>
@@ -1215,7 +1203,7 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
               </div>
             )}
 
-            <div className="overflow-auto border border-border rounded-xl flex-1">
+            <div className="overflow-auto border border-border rounded-xl flex-1 min-h-0 max-h-[50dvh] md:max-h-[60dvh]">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-card border-b border-border">
                   <tr>
@@ -1319,8 +1307,9 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
               </table>
             </div>
 
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <ModalFooter className="mt-4 justify-end">
               <button
+                type="button"
                 onClick={() => {
                   setImportPreview(null);
                   setImportPreviewFile(null);
@@ -1331,16 +1320,17 @@ export default function AssetInventorySection({ variant = 'standalone', forcedLo
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={commitResolvedImport}
                 disabled={importing}
                 className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm disabled:opacity-50"
               >
                 {importing ? 'Importing...' : 'Commit Resolved Import'}
               </button>
-            </div>
-          </div>
+            </ModalFooter>
         </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 }

@@ -11,6 +11,9 @@ import {
 import { notificationAPI, ticketAPI } from '../services/api';
 import { itamAPI } from '../services/itamAPI';
 import BrandLogo from '../components/BrandLogo';
+import PWAInstallBanner from '../components/PWAInstallBanner';
+import PWAUpdateToast from '../components/PWAUpdateToast';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import type { Notification, Ticket as TicketType } from '../types';
 import type { Asset } from '../types/itam';
 
@@ -50,6 +53,8 @@ export default function DashboardLayout() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const location = useLocation();
+
+  useBodyScrollLock(mobileSearchOpen);
 
   useEffect(() => {
     if (user) {
@@ -198,13 +203,13 @@ export default function DashboardLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
+    <div className="min-h-dvh bg-background flex flex-col md:flex-row">
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed md:sticky top-0 left-0 z-50 md:z-auto h-screen w-[85vw] max-w-72 md:w-64 flex flex-col border-r border-border bg-card transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      <aside className={`fixed md:sticky top-0 left-0 z-50 md:z-auto h-dvh w-[85vw] max-w-72 md:w-64 flex flex-col border-r border-border bg-card transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="h-14 px-4 md:px-5 border-b border-border flex items-center justify-between gap-3 shrink-0">
           <BrandLogo to="/" size="md" className="min-w-0 flex-1" />
           <button className="md:hidden p-1 text-muted-foreground hover:text-foreground" onClick={() => setSidebarOpen(false)}>
@@ -247,8 +252,8 @@ export default function DashboardLayout() {
       </aside>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="h-14 border-b border-border bg-card grid grid-cols-[1fr_auto] md:grid-cols-[minmax(0,1fr)_minmax(320px,42rem)_minmax(0,1fr)] items-center gap-x-3 px-4 md:px-6 shrink-0">
+      <div className="flex-1 flex flex-col h-dvh min-h-0 overflow-hidden">
+        <header className="h-14 border-b border-border bg-card grid grid-cols-[1fr_auto] md:grid-cols-[minmax(0,1fr)_minmax(320px,42rem)_minmax(0,1fr)] items-center gap-x-3 px-4 md:px-6 shrink-0 pt-[env(safe-area-inset-top)]">
           <div className="flex items-center gap-2 md:gap-3 min-w-0">
             <button className="md:hidden p-1.5 -ml-1 text-muted-foreground hover:text-foreground" onClick={() => setSidebarOpen(true)}>
               <Menu className="h-5 w-5" />
@@ -454,7 +459,7 @@ export default function DashboardLayout() {
         </header>
 
         {mobileSearchOpen && (
-          <div className="md:hidden fixed inset-0 z-[60] bg-background/95 backdrop-blur-sm p-4 pt-16">
+          <div className="md:hidden fixed inset-0 z-[60] bg-background/95 backdrop-blur-sm p-4 pt-[max(4rem,env(safe-area-inset-top))]">
             <button className="absolute top-4 right-4 p-2 text-muted-foreground" onClick={() => setMobileSearchOpen(false)}>
               <X className="h-5 w-5" />
             </button>
@@ -470,7 +475,7 @@ export default function DashboardLayout() {
                 className="w-full pl-10 pr-4 py-3 rounded-xl border border-border bg-card text-foreground"
               />
             </div>
-            <div className="mt-3 max-h-[70vh] overflow-y-auto space-y-2">
+            <div className="mt-3 max-h-[70dvh] overflow-y-auto overscroll-y-contain space-y-2">
               {kbResults.map((a) => (
                 <button key={a.id} onClick={() => goArticle(a.id)} className="w-full text-left p-3 rounded-lg border border-border bg-card">
                   <p className="text-sm font-medium truncate">{a.title}</p>
@@ -491,7 +496,9 @@ export default function DashboardLayout() {
           </div>
         )}
 
-        <main className="flex-1 overflow-auto p-4 md:p-6 xl:p-8 bg-muted/20">
+        <PWAUpdateToast />
+        <main className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain p-4 md:p-6 xl:p-8 pb-[max(1rem,env(safe-area-inset-bottom))] bg-muted/20">
+          <PWAInstallBanner />
           <Outlet />
         </main>
       </div>

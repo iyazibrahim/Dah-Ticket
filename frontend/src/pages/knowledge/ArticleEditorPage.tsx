@@ -8,6 +8,7 @@ import { kbAPI } from '../../services/kbAPI';
 import { usePermissions } from '../../hooks/usePermissions';
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
+import ConfirmModal from '../../components/ui/ConfirmModal';
 import type { KBArticle } from '../../types';
 
 const inputClass =
@@ -342,42 +343,15 @@ export default function ArticleEditorPage() {
         </div>
       </form>
 
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center">
-                <Trash2 className="h-[18px] w-[18px] text-rose-400" />
-              </div>
-              <div>
-                <h3 className="text-foreground font-semibold">Delete Article</h3>
-                <p className="text-muted-foreground text-xs">This cannot be undone</p>
-              </div>
-            </div>
-            <p className="text-muted-foreground text-sm mb-5">
-              Delete <strong className="text-foreground">{form.title || 'this article'}</strong>? It will be
-              removed from the knowledge base.
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirm(false)}
-                className="flex-1 px-4 py-2 border border-border text-muted-foreground hover:bg-muted rounded-lg text-sm transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
-              >
-                {deleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        open={deleteConfirm}
+        onClose={() => setDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Article"
+        description={`Delete "${form.title || 'this article'}"? It will be removed from the knowledge base.`}
+        confirmLabel="Delete"
+        loading={deleting}
+      />
     </PageContainer>
   );
 }

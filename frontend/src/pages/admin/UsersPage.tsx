@@ -3,8 +3,11 @@ import api from '../../services/api';
 import { itamAPI } from '../../services/itamAPI';
 import type { User } from '../../types';
 import type { Location } from '../../types/itam';
-import { Loader2, Search, Plus, Shield, ShieldCheck, UserIcon, X, AlertCircle, CheckCircle2, MapPin } from 'lucide-react';
+import { Loader2, Search, Plus, Shield, ShieldCheck, UserIcon, AlertCircle, CheckCircle2, MapPin } from 'lucide-react';
 import PageContainer from '../../components/PageContainer';
+import Modal from '../../components/ui/Modal';
+import ModalHeader from '../../components/ui/ModalHeader';
+import ModalFooter from '../../components/ui/ModalFooter';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -244,6 +247,7 @@ export default function UsersPage() {
       {/* Create User Modal */}
       {showCreateModal && (
         <CreateUserModal
+          open={showCreateModal}
           locations={locations}
           onClose={() => setShowCreateModal(false)}
           onSuccess={() => { setShowCreateModal(false); fetchUsers(); showFeedback('success', 'User created'); }}
@@ -254,7 +258,7 @@ export default function UsersPage() {
 }
 
 // --- Create User Modal ---
-function CreateUserModal({ locations, onClose, onSuccess }: { locations: Location[]; onClose: () => void; onSuccess: () => void }) {
+function CreateUserModal({ open, locations, onClose, onSuccess }: { open: boolean; locations: Location[]; onClose: () => void; onSuccess: () => void }) {
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -286,21 +290,16 @@ function CreateUserModal({ locations, onClose, onSuccess }: { locations: Locatio
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-        <div className="flex items-center justify-between p-5 border-b border-border">
-          <h3 className="text-lg font-bold text-foreground">Create New User</h3>
-          <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+    <Modal open={open} onClose={onClose} unstyled className="max-w-md">
+      <ModalHeader title="Create New User" onClose={onClose} />
+
+      {error && (
+        <div className="mx-5 mt-5 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-lg text-red-700 dark:text-red-400 text-sm">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
         </div>
+      )}
 
-        {error && (
-          <div className="mx-5 mt-5 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-lg text-red-700 dark:text-red-400 text-sm">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+      <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-foreground mb-1">First name</label>
@@ -350,15 +349,14 @@ function CreateUserModal({ locations, onClose, onSuccess }: { locations: Locatio
             </select>
             <p className="text-[11px] text-muted-foreground mt-1">Assign one location for site PIC admins. They only see data for that location.</p>
           </div>
-          <div className="flex justify-end gap-3 pt-2">
+          <ModalFooter className="justify-end">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted">Cancel</button>
             <button type="submit" disabled={isSubmitting}
               className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-50 flex items-center gap-2">
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Create
             </button>
-          </div>
+          </ModalFooter>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
