@@ -29,20 +29,22 @@ export default function Modal({ open, onClose, children, className = 'max-w-md' 
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <>
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden
       />
-      <div
-        className={`relative z-[61] bg-card border border-border rounded-xl shadow-xl w-full p-6 space-y-4 ${className}`}
-        role="dialog"
-        aria-modal="true"
-      >
-        {children}
+      <div className="fixed inset-0 z-[61] flex items-center justify-center p-4 pointer-events-none">
+        <div
+          className={`pointer-events-auto relative bg-card border border-border rounded-xl shadow-xl w-full p-6 space-y-4 ${className}`}
+          role="dialog"
+          aria-modal="true"
+        >
+          {children}
+        </div>
       </div>
-    </div>,
+    </>,
     document.body,
   );
 }
