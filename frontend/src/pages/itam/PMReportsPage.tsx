@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { itamAPI } from '../../services/itamAPI';
 import { useLocationScope } from '../../hooks/useLocationScope';
@@ -11,6 +11,8 @@ import ReportStep from '../../components/itam/site-inspection/ReportStep';
 import AddFindingModal from '../../components/itam/site-inspection/AddFindingModal';
 import {
   EMPTY_FINDING_FORM,
+  composeDescription,
+  parseDescription,
   type FindingFormState,
   type InspectionStep,
 } from '../../components/itam/site-inspection/constants';
@@ -50,7 +52,7 @@ function mapAssetToDeviceTypeOption(asset: Asset, fallback = ''): string {
   return 'Other';
 }
 
-function combineDescription(f: PMFinding): string {
+function combinedFindingText(f: PMFinding): string {
   const parts = [f.description, f.recommendation].filter((p) => p && p.trim());
   return parts.join('\n\n');
 }
@@ -171,22 +173,31 @@ export default function PMReportsPage() {
   }, [monthFilter, effectiveLocationFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const q = assetSearch.trim();
+    if (q.length < 2) {
+      setAssetSearchResults([]);
+      return;
+    }
+    let cancelled = false;
     const t = setTimeout(async () => {
-      if (assetSearch.trim().length < 2) {
-        setAssetSearchResults([]);
-        return;
-      }
       try {
-        const res = await itamAPI.searchAssets(assetSearch.trim(), {
+        const res = await itamAPI.searchAssets(q, {
           location_id: activeLocationID || undefined,
         });
-        setAssetSearchResults(res.data.assets ?? []);
+        if (!cancelled) setAssetSearchResults(res.data.assets ?? []);
       } catch {
-        setAssetSearchResults([]);
+        if (!cancelled) setAssetSearchResults([]);
       }
-    }, 300);
-    return () => clearTimeout(t);
+    }, 50);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [assetSearch, activeLocationID]);
+
+  const handleAssetSearchChange = useCallback((q: string) => {
+    setAssetSearch(q);
+  }, []);
 
   const handleStepClick = (step: InspectionStep) => {
     if (step === 'location' && !isScoped) {
@@ -229,16 +240,19 @@ export default function PMReportsPage() {
 
   const openModalForEdit = (f: PMFinding) => {
     setEditingFinding(f);
+    const parts = parseDescription(combinedFindingText(f));
     setFindingForm({
       device_title: f.device_label ?? f.asset?.name ?? '',
       asset_type_label: f.asset_type_label ?? '',
       finding_type: f.finding_type ?? 'health_check',
       severity: f.severity ?? 'medium',
       threshold_state: f.threshold_state ?? 'normal',
-      description: combineDescription(f),
+      what_is_wrong: parts.what_is_wrong,
+      impact: parts.impact,
+      recommended_action: parts.recommended_action,
     });
     setSelectedAsset(f.asset ?? null);
-    setAssetSearch(f.asset?.name ?? '');
+    setAssetSearch('');
     setAssetSearchResults([]);
     setPendingPhotos([]);
     setModalOpen(true);
@@ -256,9 +270,8 @@ export default function PMReportsPage() {
       return;
     }
     setSelectedAsset(asset);
-    setAssetSearch(asset.name);
+    setAssetSearch('');
     setAssetSearchResults([]);
-    setLocationFilter(String(asset.location_id));
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
@@ -272,6 +285,7 @@ export default function PMReportsPage() {
   const clearSelectedAsset = () => {
     setSelectedAsset(null);
     setAssetSearch('');
+    setAssetSearchResults([]);
   };
 
   const submitFinding = async (): Promise<boolean> => {
@@ -298,9 +312,14 @@ export default function PMReportsPage() {
 
     setSubmittingFinding(true);
     try {
-      const payload = {
+      const description = composeDescription({
+        what_is_wrong: findingForm.what_is_wrong,
+        impact: findingForm.impact,
+        recommended_action: findingForm.recommended_action,
+      });
+
+      const payload: Record<string, unknown> = {
         location_id: locationId,
-        asset_id: selectedAsset?.id,
         device_label: title,
         asset_type_label:
           findingForm.asset_type_label ||
@@ -311,10 +330,17 @@ export default function PMReportsPage() {
         severity: findingForm.severity,
         status: 'open',
         threshold_state: findingForm.threshold_state,
-        description: findingForm.description,
+        description,
         recommendation: '',
         replacement_required: false,
       };
+
+      // Explicit null unlinks on update (backend UpdatePMFinding uses **uint).
+      if (editingFinding) {
+        payload.asset_id = selectedAsset?.id ?? null;
+      } else if (selectedAsset?.id) {
+        payload.asset_id = selectedAsset.id;
+      }
 
       if (editingFinding) {
         await itamAPI.updatePMFinding(editingFinding.id, payload);
@@ -525,14 +551,13 @@ export default function PMReportsPage() {
         open={modalOpen}
         editingFinding={editingFinding}
         form={findingForm}
-        assetSearch={assetSearch}
         assetSearchResults={assetSearchResults}
         selectedAsset={selectedAsset}
         pendingPhotos={pendingPhotos}
         submitting={submittingFinding}
         onClose={closeModal}
         onFormChange={setFindingForm}
-        onAssetSearchChange={setAssetSearch}
+        onAssetSearchChange={handleAssetSearchChange}
         onSelectAsset={applySelectedAsset}
         onClearAsset={clearSelectedAsset}
         onPhotosChange={setPendingPhotos}

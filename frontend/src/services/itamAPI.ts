@@ -211,7 +211,7 @@ export const itamAPI = {
   listPMFindings: (params?: { location_id?: number | string; month?: string; status?: string; severity?: string; q?: string }): Promise<{ data: { findings: PMFinding[] } }> =>
     api.get('/itam/pm/findings', { params }),
 
-  createPMFinding: (data: Partial<PMFinding>): Promise<{ data: { finding: PMFinding } }> =>
+  createPMFinding: (data: Record<string, unknown>): Promise<{ data: { finding: PMFinding } }> =>
     api.post('/itam/pm/findings', data),
 
   uploadPMFindingPhotos: (findingId: number, files: File[]) => {
@@ -222,7 +222,7 @@ export const itamAPI = {
     });
   },
 
-  updatePMFinding: (id: number, data: Partial<PMFinding>): Promise<{ data: { finding: PMFinding } }> =>
+  updatePMFinding: (id: number, data: Record<string, unknown>): Promise<{ data: { finding: PMFinding } }> =>
     api.put(`/itam/pm/findings/${id}`, data),
 
   deletePMFinding: (id: number): Promise<{ data: { message: string } }> =>

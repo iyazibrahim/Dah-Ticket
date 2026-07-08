@@ -1,14 +1,18 @@
-import { useEffect, useMemo } from 'react';
-import { ClipboardCheck, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ClipboardCheck, Search, Sparkles, X } from 'lucide-react';
 import Modal from '../../ui/Modal';
 import type { Asset, PMFinding } from '../../../types/itam';
-import { DEVICE_TYPES, FINDING_TYPES, type FindingFormState } from './constants';
+import {
+  DESCRIPTION_TEMPLATES,
+  DEVICE_TYPES,
+  FINDING_TYPES,
+  type FindingFormState,
+} from './constants';
 
 interface Props {
   open: boolean;
   editingFinding: PMFinding | null;
   form: FindingFormState;
-  assetSearch: string;
   assetSearchResults: Asset[];
   selectedAsset: Asset | null;
   pendingPhotos: File[];
@@ -26,7 +30,6 @@ export default function AddFindingModal({
   open,
   editingFinding,
   form,
-  assetSearch,
   assetSearchResults,
   selectedAsset,
   pendingPhotos,
@@ -39,6 +42,31 @@ export default function AddFindingModal({
   onPhotosChange,
   onSave,
 }: Props) {
+  // Local query so typed characters always display immediately.
+  const [searchQuery, setSearchQuery] = useState('');
+  const onSearchRef = useRef(onAssetSearchChange);
+  onSearchRef.current = onAssetSearchChange;
+  const wasOpenRef = useRef(false);
+
+  // Reset only on open transition (false → true), not on every parent re-render.
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setSearchQuery('');
+      onSearchRef.current('');
+    }
+    if (!open && wasOpenRef.current) {
+      setSearchQuery('');
+      onSearchRef.current('');
+    }
+    wasOpenRef.current = open;
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => onSearchRef.current(searchQuery), 250);
+    return () => clearTimeout(t);
+  }, [searchQuery, open]);
+
   const photoPreviews = useMemo(
     () => pendingPhotos.map((f) => URL.createObjectURL(f)),
     [pendingPhotos],
@@ -49,11 +77,6 @@ export default function AddFindingModal({
     [photoPreviews],
   );
 
-  const linkedAssetHint = useMemo(() => {
-    if (!selectedAsset) return null;
-    return `Linked: ${selectedAsset.name} (${selectedAsset.asset_tag || 'No tag'})`;
-  }, [selectedAsset]);
-
   const handleFileChange = (files: FileList | null) => {
     if (!files) return;
     onPhotosChange([...pendingPhotos, ...Array.from(files)]);
@@ -62,6 +85,34 @@ export default function AddFindingModal({
   const removePhoto = (index: number) => {
     onPhotosChange(pendingPhotos.filter((_, i) => i !== index));
   };
+
+  const applyTemplate = () => {
+    const tpl = DESCRIPTION_TEMPLATES[form.finding_type] ?? DESCRIPTION_TEMPLATES.other;
+    onFormChange({
+      ...form,
+      what_is_wrong: tpl.what_is_wrong,
+      impact: tpl.impact,
+      recommended_action: tpl.recommended_action,
+    });
+  };
+
+  const handleClearAsset = () => {
+    setSearchQuery('');
+    onSearchRef.current('');
+    onClearAsset();
+  };
+
+  const handleSelectAsset = (asset: Asset) => {
+    setSearchQuery('');
+    onSearchRef.current('');
+    onSelectAsset(asset);
+  };
+
+  const fieldClass =
+    'w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground';
+
+  const showNoResults =
+    searchQuery.trim().length >= 2 && assetSearchResults.length === 0 && !selectedAsset;
 
   return (
     <Modal open={open} onClose={onClose} unstyled className="max-w-lg">
@@ -87,7 +138,7 @@ export default function AddFindingModal({
             value={form.device_title}
             onChange={(e) => onFormChange({ ...form, device_title: e.target.value })}
             placeholder="e.g. Broken projector in meeting room"
-            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+            className={fieldClass}
           />
         </div>
 
@@ -96,15 +147,19 @@ export default function AddFindingModal({
             Link Asset <span className="text-muted-foreground">(optional)</span>
           </label>
           <div className="relative">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              size={13}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+            />
             <input
-              value={assetSearch}
-              onChange={(e) => {
-                onAssetSearchChange(e.target.value);
-                if (e.target.value.trim().length < 2) onClearAsset();
-              }}
+              type="text"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search asset by name or tag"
-              className="w-full pl-8 pr-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+              className="w-full pl-8 pr-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground caret-foreground"
             />
           </div>
           {assetSearchResults.length > 0 && (
@@ -115,13 +170,9 @@ export default function AddFindingModal({
                   type="button"
                   onMouseDown={(e) => {
                     e.preventDefault();
-                    onSelectAsset(a);
+                    handleSelectAsset(a);
                   }}
-                  onTouchStart={(e) => {
-                    e.preventDefault();
-                    onSelectAsset(a);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b border-border last:border-b-0"
+                  className="w-full text-left px-3 py-2 text-xs text-foreground hover:bg-muted border-b border-border last:border-b-0"
                 >
                   {a.name}{' '}
                   <span className="text-muted-foreground">({a.asset_tag})</span>
@@ -129,21 +180,25 @@ export default function AddFindingModal({
               ))}
             </div>
           )}
-          {linkedAssetHint ? (
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <p className="text-[11px] text-emerald-600 truncate">{linkedAssetHint}</p>
+          {showNoResults && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              No assets found for this location.
+            </p>
+          )}
+          {selectedAsset && (
+            <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5">
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 truncate">
+                Linked: {selectedAsset.name}
+                {selectedAsset.asset_tag ? ` (${selectedAsset.asset_tag})` : ''}
+              </p>
               <button
                 type="button"
-                onClick={onClearAsset}
+                onClick={handleClearAsset}
                 className="text-[11px] text-muted-foreground hover:text-foreground shrink-0"
               >
                 Clear
               </button>
             </div>
-          ) : (
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              No asset linked — enter a title manually above.
-            </p>
           )}
         </div>
 
@@ -152,7 +207,7 @@ export default function AddFindingModal({
           <select
             value={form.asset_type_label}
             onChange={(e) => onFormChange({ ...form, asset_type_label: e.target.value })}
-            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+            className={fieldClass}
           >
             <option value="">Select device type…</option>
             {DEVICE_TYPES.map(({ key, label }) => (
@@ -170,7 +225,7 @@ export default function AddFindingModal({
           <select
             value={form.finding_type}
             onChange={(e) => onFormChange({ ...form, finding_type: e.target.value })}
-            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+            className={fieldClass}
           >
             {FINDING_TYPES.map(({ key, label }) => (
               <option key={key} value={key}>
@@ -186,7 +241,7 @@ export default function AddFindingModal({
             <select
               value={form.severity}
               onChange={(e) => onFormChange({ ...form, severity: e.target.value })}
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+              className={fieldClass}
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -199,7 +254,7 @@ export default function AddFindingModal({
             <select
               value={form.threshold_state}
               onChange={(e) => onFormChange({ ...form, threshold_state: e.target.value })}
-              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground"
+              className={fieldClass}
             >
               <option value="normal">Normal</option>
               <option value="warning">Warning</option>
@@ -208,17 +263,52 @@ export default function AddFindingModal({
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs text-muted-foreground mb-1">
-            Description / recommendation <span className="text-muted-foreground">(optional)</span>
-          </label>
-          <textarea
-            rows={3}
-            value={form.description}
-            onChange={(e) => onFormChange({ ...form, description: e.target.value })}
-            placeholder="Notes, observations, or recommended actions…"
-            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground resize-none"
-          />
+        <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <label className="block text-xs font-medium text-foreground">
+              Description builder{' '}
+              <span className="font-normal text-muted-foreground">(optional)</span>
+            </label>
+            <button
+              type="button"
+              onClick={applyTemplate}
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80"
+            >
+              <Sparkles size={12} />
+              Insert template
+            </button>
+          </div>
+
+          <div>
+            <label className="block text-[11px] text-muted-foreground mb-1">What is wrong?</label>
+            <textarea
+              rows={2}
+              value={form.what_is_wrong}
+              onChange={(e) => onFormChange({ ...form, what_is_wrong: e.target.value })}
+              placeholder="Describe the issue in plain language…"
+              className={`${fieldClass} resize-none`}
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-muted-foreground mb-1">What is the impact?</label>
+            <textarea
+              rows={2}
+              value={form.impact}
+              onChange={(e) => onFormChange({ ...form, impact: e.target.value })}
+              placeholder="Who or what is affected…"
+              className={`${fieldClass} resize-none`}
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] text-muted-foreground mb-1">Recommended action</label>
+            <textarea
+              rows={2}
+              value={form.recommended_action}
+              onChange={(e) => onFormChange({ ...form, recommended_action: e.target.value })}
+              placeholder="What should be done next…"
+              className={`${fieldClass} resize-none`}
+            />
+          </div>
         </div>
 
         <div>

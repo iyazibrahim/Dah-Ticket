@@ -244,7 +244,12 @@ func CreatePMFinding(c *gin.Context) {
 		}
 		finding.LocationID = *asset.LocationID
 		finding.AssetID = req.AssetID
-		finding.DeviceLabel = strings.TrimSpace(asset.Name)
+		// Prefer the user-entered title when provided; fall back to the asset name.
+		deviceLabel := strings.TrimSpace(req.DeviceLabel)
+		if deviceLabel == "" {
+			deviceLabel = strings.TrimSpace(asset.Name)
+		}
+		finding.DeviceLabel = deviceLabel
 		finding.AssetTypeLabel = assetTypeLabel
 		if label := strings.TrimSpace(req.AssetTypeLabel); label != "" {
 			finding.AssetTypeLabel = label
@@ -314,7 +319,12 @@ func UpdatePMFinding(c *gin.Context) {
 			return
 		}
 		finding.LocationID = *asset.LocationID
-		finding.DeviceLabel = strings.TrimSpace(asset.Name)
+		// Prefer the user-entered title when provided; fall back to the asset name.
+		if req.DeviceLabel != nil && strings.TrimSpace(*req.DeviceLabel) != "" {
+			finding.DeviceLabel = strings.TrimSpace(*req.DeviceLabel)
+		} else if strings.TrimSpace(finding.DeviceLabel) == "" {
+			finding.DeviceLabel = strings.TrimSpace(asset.Name)
+		}
 		finding.AssetTypeLabel = assetTypeLabel
 		if req.AssetTypeLabel != nil && strings.TrimSpace(*req.AssetTypeLabel) != "" {
 			finding.AssetTypeLabel = strings.TrimSpace(*req.AssetTypeLabel)
@@ -808,48 +818,54 @@ func ExportPMReportPDF(c *gin.Context) {
 		return raw
 	}
 
+	// A4 portrait (210mm x 297mm) — keep explicit so print viewers show true A4.
 	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.SetAutoPageBreak(true, 15)
+	pdf.SetAutoPageBreak(true, 18)
 	pdf.AddPage()
 
-	marginL := 15.0
-	marginR := 15.0
+	marginL := 18.0
+	marginR := 18.0
+	marginT := 18.0
 	pageW, _ := pdf.GetPageSize()
 	contentW := pageW - marginL - marginR
-	pdf.SetMargins(marginL, 15, marginR)
+	pdf.SetMargins(marginL, marginT, marginR)
+	pdf.SetX(marginL)
+	pdf.SetY(marginT)
+
+	sectionGap := 8.0
+	lineH := 5.5
 
 	// ── Header ──────────────────────────────────────────────────────────
 	if settings.OrganizationName != "" {
-		pdf.SetFont("Arial", "B", 11)
-		pdf.SetTextColor(80, 80, 80)
-		pdf.Cell(contentW, 7, settings.OrganizationName)
-		pdf.Ln(7)
+		pdf.SetFont("Arial", "B", 10)
+		pdf.SetTextColor(90, 90, 90)
+		pdf.Cell(contentW, 6, settings.OrganizationName)
+		pdf.Ln(6)
 	}
 
-	pdf.SetFont("Arial", "B", 17)
+	pdf.SetFont("Arial", "B", 18)
 	pdf.SetTextColor(20, 20, 20)
-	pdf.Cell(contentW, 9, "Preventive Maintenance Report")
-	pdf.Ln(9)
+	pdf.Cell(contentW, 10, "Site Inspection Report")
+	pdf.Ln(10)
 
-	// horizontal rule
-	pdf.SetDrawColor(180, 180, 180)
-	pdf.SetLineWidth(0.4)
+	pdf.SetDrawColor(160, 160, 160)
+	pdf.SetLineWidth(0.5)
 	x, y := pdf.GetX(), pdf.GetY()
 	pdf.Line(x, y, x+contentW, y)
-	pdf.Ln(4)
-
-	// ── Report meta ─────────────────────────────────────────────────────
-	pdf.SetFont("Arial", "", 10)
-	pdf.SetTextColor(60, 60, 60)
-	pdf.Cell(contentW/2, 6, fmt.Sprintf("Location: %s", report.Location.Name))
-	pdf.Cell(contentW/2, 6, fmt.Sprintf("Report #%d", report.ID))
 	pdf.Ln(6)
-	pdf.Cell(contentW/2, 6, fmt.Sprintf("Month: %s", report.Month))
-	pdf.Cell(contentW/2, 6, fmt.Sprintf("Generated: %s", time.Now().Format("2006-01-02 15:04")))
-	pdf.Ln(8)
+
+	// ── Report meta (two columns) ───────────────────────────────────────
+	pdf.SetFont("Arial", "", 10)
+	pdf.SetTextColor(55, 55, 55)
+	pdf.Cell(contentW/2, lineH, fmt.Sprintf("Location: %s", report.Location.Name))
+	pdf.Cell(contentW/2, lineH, fmt.Sprintf("Report #%d", report.ID))
+	pdf.Ln(lineH)
+	pdf.Cell(contentW/2, lineH, fmt.Sprintf("Month: %s", report.Month))
+	pdf.Cell(contentW/2, lineH, fmt.Sprintf("Generated: %s", time.Now().Format("2006-01-02 15:04")))
+	pdf.Ln(sectionGap + 2)
 
 	// ── Summary ──────────────────────────────────────────────────────────
-	pdf.SetFont("Arial", "B", 11)
+	pdf.SetFont("Arial", "B", 12)
 	pdf.SetTextColor(20, 20, 20)
 	pdf.Cell(contentW, 7, "Summary")
 	pdf.Ln(7)
@@ -859,38 +875,38 @@ func ExportPMReportPDF(c *gin.Context) {
 	if summaryText == "" {
 		summaryText = "No summary provided."
 	}
-	pdf.MultiCell(contentW, 5.5, summaryText, "", "L", false)
-	pdf.Ln(5)
+	pdf.MultiCell(contentW, lineH, summaryText, "", "L", false)
+	pdf.Ln(sectionGap)
 
 	// ── Metrics (only if data present) ───────────────────────────────────
 	hasMetrics := report.NetworkAvgUtilization != nil || report.NetworkPeakUtilization != nil || report.DowntimeMinutes != nil
 	if hasMetrics {
-		pdf.SetFont("Arial", "B", 11)
+		pdf.SetFont("Arial", "B", 12)
 		pdf.SetTextColor(20, 20, 20)
 		pdf.Cell(contentW, 7, "Network Metrics")
 		pdf.Ln(7)
 		pdf.SetFont("Arial", "", 10)
 		pdf.SetTextColor(50, 50, 50)
 		if report.NetworkAvgUtilization != nil {
-			pdf.Cell(contentW, 5.5, fmt.Sprintf("Average Utilization: %.1f%%", *report.NetworkAvgUtilization))
-			pdf.Ln(5.5)
+			pdf.Cell(contentW, lineH, fmt.Sprintf("Average Utilization: %.1f%%", *report.NetworkAvgUtilization))
+			pdf.Ln(lineH)
 		}
 		if report.NetworkPeakUtilization != nil {
-			pdf.Cell(contentW, 5.5, fmt.Sprintf("Peak Utilization: %.1f%%", *report.NetworkPeakUtilization))
-			pdf.Ln(5.5)
+			pdf.Cell(contentW, lineH, fmt.Sprintf("Peak Utilization: %.1f%%", *report.NetworkPeakUtilization))
+			pdf.Ln(lineH)
 		}
 		if report.DowntimeMinutes != nil {
-			pdf.Cell(contentW, 5.5, fmt.Sprintf("Total Downtime: %d minutes", *report.DowntimeMinutes))
-			pdf.Ln(5.5)
+			pdf.Cell(contentW, lineH, fmt.Sprintf("Total Downtime: %d minutes", *report.DowntimeMinutes))
+			pdf.Ln(lineH)
 		}
-		pdf.Ln(5)
+		pdf.Ln(sectionGap)
 	}
 
 	// ── Findings ──────────────────────────────────────────────────────────
-	pdf.SetFont("Arial", "B", 11)
+	pdf.SetFont("Arial", "B", 12)
 	pdf.SetTextColor(20, 20, 20)
 	pdf.Cell(contentW, 7, fmt.Sprintf("Findings (%d)", len(report.Findings)))
-	pdf.Ln(8)
+	pdf.Ln(9)
 
 	if len(report.Findings) == 0 {
 		pdf.SetFont("Arial", "I", 10)
@@ -899,13 +915,9 @@ func ExportPMReportPDF(c *gin.Context) {
 		pdf.Ln(6)
 	} else {
 		for i, finding := range report.Findings {
-			// alternating background
-			blockX := pdf.GetX()
-			blockY := pdf.GetY()
-			_ = blockX
-			_ = blockY
-			if i%2 == 0 {
-				pdf.SetFillColor(247, 248, 250)
+			fill := i%2 == 0
+			if fill {
+				pdf.SetFillColor(246, 247, 249)
 			} else {
 				pdf.SetFillColor(255, 255, 255)
 			}
@@ -923,64 +935,72 @@ func ExportPMReportPDF(c *gin.Context) {
 			status := strings.Title(finding.Status)
 			threshold := strings.Title(finding.ThresholdState)
 
-			// Finding header line
-			pdf.SetFont("Arial", "B", 10)
+			// Title
+			pdf.SetFont("Arial", "B", 11)
 			pdf.SetTextColor(20, 20, 20)
-			headerLine := fmt.Sprintf("%d. %s  |  %s  |  %s  |  %s", i+1, device, typeLabel, severity, status)
-			pdf.MultiCell(contentW, 6, headerLine, "", "L", i%2 == 0)
+			pdf.MultiCell(contentW, 6.5, fmt.Sprintf("%d. %s", i+1, device), "", "L", fill)
 
-			// Threshold + replacement
+			// Meta row
 			pdf.SetFont("Arial", "", 9)
-			pdf.SetTextColor(100, 100, 100)
-			subLine := fmt.Sprintf("   Threshold: %s", threshold)
-			if finding.ReplacementRequired {
-				subLine += "   [REPLACEMENT REQUIRED]"
+			pdf.SetTextColor(70, 70, 70)
+			meta := fmt.Sprintf("Type: %s    Severity: %s    Status: %s", typeLabel, severity, status)
+			if strings.TrimSpace(finding.ThresholdState) != "" && strings.ToLower(finding.ThresholdState) != "normal" {
+				meta += fmt.Sprintf("    Threshold: %s", threshold)
 			}
-			pdf.MultiCell(contentW, 5, subLine, "", "L", i%2 == 0)
+			if finding.ReplacementRequired {
+				meta += "    Replacement required"
+			}
+			pdf.MultiCell(contentW, 5, meta, "", "L", fill)
+			pdf.Ln(2)
 
 			// Description
 			if desc := strings.TrimSpace(finding.Description); desc != "" {
 				pdf.SetFont("Arial", "B", 9)
-				pdf.SetTextColor(60, 60, 60)
-				pdf.Cell(contentW, 5, "   Description:")
+				pdf.SetTextColor(45, 45, 45)
+				pdf.Cell(contentW, 5, "Description")
 				pdf.Ln(5)
 				pdf.SetFont("Arial", "", 9)
-				pdf.SetLeftMargin(marginL + 8)
-				pdf.MultiCell(contentW-8, 5, desc, "", "L", i%2 == 0)
+				pdf.SetTextColor(55, 55, 55)
+				pdf.SetLeftMargin(marginL + 4)
+				pdf.MultiCell(contentW-4, 5, desc, "", "L", fill)
 				pdf.SetLeftMargin(marginL)
+				pdf.Ln(2)
 			}
 
-			// Recommendation
+			// Recommendation (legacy field, if present)
 			if rec := strings.TrimSpace(finding.Recommendation); rec != "" {
 				pdf.SetFont("Arial", "B", 9)
-				pdf.SetTextColor(60, 60, 60)
-				pdf.Cell(contentW, 5, "   Recommendation:")
+				pdf.SetTextColor(45, 45, 45)
+				pdf.Cell(contentW, 5, "Recommendation")
 				pdf.Ln(5)
 				pdf.SetFont("Arial", "", 9)
-				pdf.SetLeftMargin(marginL + 8)
-				pdf.MultiCell(contentW-8, 5, rec, "", "L", i%2 == 0)
+				pdf.SetTextColor(55, 55, 55)
+				pdf.SetLeftMargin(marginL + 4)
+				pdf.MultiCell(contentW-4, 5, rec, "", "L", fill)
 				pdf.SetLeftMargin(marginL)
+				pdf.Ln(2)
 			}
 
-			// separator
 			pdf.SetDrawColor(210, 210, 210)
-			pdf.SetLineWidth(0.2)
+			pdf.SetLineWidth(0.25)
 			sepY := pdf.GetY()
 			pdf.Line(marginL, sepY, marginL+contentW, sepY)
-			pdf.Ln(3)
+			pdf.Ln(5)
 		}
 	}
 
-	pdf.Ln(5)
+	pdf.Ln(sectionGap)
 
-	// ── Glossary ──────────────────────────────────────────────────────────
-	pdf.SetFont("Arial", "B", 10)
-	pdf.SetTextColor(80, 80, 80)
+	// ── Glossary (plain language) ─────────────────────────────────────────
+	pdf.SetFont("Arial", "B", 11)
+	pdf.SetTextColor(40, 40, 40)
 	pdf.Cell(contentW, 6, "Glossary")
-	pdf.Ln(6)
+	pdf.Ln(7)
 	pdf.SetFont("Arial", "", 9)
-	pdf.SetTextColor(100, 100, 100)
-	pdf.MultiCell(contentW, 5, "MTTR: Mean Time To Repair — average hours to resolve a finding.\nMTBF: Mean Time Between Failures — average hours between observed findings.", "", "L", false)
+	pdf.SetTextColor(70, 70, 70)
+	glossary := "Average time to fix - the typical number of hours it takes to resolve a finding after it is observed.\n" +
+		"Average time between issues - the typical number of hours between observed findings at this location."
+	pdf.MultiCell(contentW, 5, glossary, "", "L", false)
 
 	fileName := fmt.Sprintf("pm_report_%d_%s.pdf", report.ID, strings.ReplaceAll(report.Month, "-", "_"))
 	c.Header("Content-Type", "application/pdf")
