@@ -205,8 +205,8 @@ export default function DashboardLayout() {
 
       {/* Sidebar */}
       <aside className={`fixed md:sticky top-0 left-0 z-50 md:z-auto h-screen w-[85vw] max-w-72 md:w-64 flex flex-col border-r border-border bg-card transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="h-16 px-4 md:px-5 border-b border-border flex items-center justify-between gap-3">
-          <BrandLogo to="/" size="lg" className="min-w-0 flex-1" />
+        <div className="h-14 px-4 md:px-5 border-b border-border flex items-center justify-between gap-3 shrink-0">
+          <BrandLogo to="/" size="md" className="min-w-0 flex-1" />
           <button className="md:hidden p-1 text-muted-foreground hover:text-foreground" onClick={() => setSidebarOpen(false)}>
             <X className="h-5 w-5" />
           </button>

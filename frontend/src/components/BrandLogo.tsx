@@ -4,10 +4,10 @@ import { BRAND_LOGO_SRC, BRAND_NAME } from '../lib/brand';
 type BrandLogoSize = 'sm' | 'md' | 'lg' | 'xl';
 
 const sizeClasses: Record<BrandLogoSize, string> = {
-  sm: 'h-8 max-h-8 w-auto max-w-[148px]',
-  md: 'h-10 max-h-10 w-auto max-w-[200px]',
-  lg: 'h-12 max-h-12 w-auto max-w-[220px]',
-  xl: 'h-16 max-h-16 w-auto max-w-[280px]',
+  sm: 'h-7 w-auto max-w-[140px]',
+  md: 'h-9 w-auto max-w-[180px]',
+  lg: 'h-10 w-auto max-w-[200px]',
+  xl: 'h-16 w-auto max-w-[280px]',
 };
 
 interface BrandLogoProps {
@@ -22,22 +22,24 @@ export default function BrandLogo({
   className = '',
   to,
 }: BrandLogoProps) {
+  const wrapperClass = `inline-flex min-w-0 max-w-full items-center leading-none ${className}`;
+
   const image = (
     <img
       src={BRAND_LOGO_SRC}
       alt={BRAND_NAME}
-      className={`block object-contain object-left ${sizeClasses[size]} ${className}`}
+      className={`block shrink-0 object-contain object-left ${sizeClasses[size]}`}
       decoding="async"
     />
   );
 
   if (to) {
     return (
-      <Link to={to} className="inline-flex min-w-0 max-w-full items-center">
+      <Link to={to} className={wrapperClass}>
         {image}
       </Link>
     );
   }
 
-  return <span className="inline-flex min-w-0 max-w-full items-center">{image}</span>;
+  return <span className={wrapperClass}>{image}</span>;
 }
