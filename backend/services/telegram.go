@@ -13,7 +13,7 @@ import (
 
 // SendTelegramMessage posts a message to the configured global chat.
 func SendTelegramMessage(text string) {
-	settings, err := GetAppSettings()
+	settings, err := GetAppSettings(1)
 	if err != nil {
 		log.Printf("[TELEGRAM SKIPPED] settings load failed: %v", err)
 		return
@@ -56,7 +56,7 @@ func SendTelegramMessage(text string) {
 
 // SendTelegramTest sends a synchronous test message for admin verification.
 func SendTelegramTest() error {
-	settings, err := GetAppSettings()
+	settings, err := GetAppSettings(1)
 	if err != nil {
 		return fmt.Errorf("failed to load settings: %w", err)
 	}

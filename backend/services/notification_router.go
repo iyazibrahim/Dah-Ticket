@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-func DispatchTicketCreated(requesterEmail, requesterName string, ticketID uint, ticketTitle string) {
-	settings, err := GetAppSettings()
+func DispatchTicketCreated(orgID uint, requesterEmail, requesterName string, ticketID uint, ticketTitle string) {
+	settings, err := GetAppSettings(orgID)
 	if err != nil || !settings.NotifyTicketCreated {
 		return
 	}
@@ -32,8 +32,8 @@ func DispatchTicketCreated(requesterEmail, requesterName string, ticketID uint, 
 	}
 }
 
-func DispatchTicketAssigned(assigneeEmail, assigneeName string, ticketID uint, ticketTitle string) {
-	settings, err := GetAppSettings()
+func DispatchTicketAssigned(orgID uint, assigneeEmail, assigneeName string, ticketID uint, ticketTitle string) {
+	settings, err := GetAppSettings(orgID)
 	if err != nil || !settings.NotifyTicketAssigned {
 		return
 	}
@@ -59,8 +59,8 @@ func DispatchTicketAssigned(assigneeEmail, assigneeName string, ticketID uint, t
 	}
 }
 
-func DispatchTicketStatusChanged(recipientEmail, recipientName string, ticketID uint, ticketTitle, oldStatus, newStatus string) {
-	settings, err := GetAppSettings()
+func DispatchTicketStatusChanged(orgID uint, recipientEmail, recipientName string, ticketID uint, ticketTitle, oldStatus, newStatus string) {
+	settings, err := GetAppSettings(orgID)
 	if err != nil || !settings.NotifyTicketStatus {
 		return
 	}
@@ -86,8 +86,8 @@ func DispatchTicketStatusChanged(recipientEmail, recipientName string, ticketID 
 	}
 }
 
-func DispatchNewComment(recipientEmail, recipientName string, ticketID uint, ticketTitle, commenterName string) {
-	settings, err := GetAppSettings()
+func DispatchNewComment(orgID uint, recipientEmail, recipientName string, ticketID uint, ticketTitle, commenterName string) {
+	settings, err := GetAppSettings(orgID)
 	if err != nil || !settings.NotifyNewComment {
 		return
 	}

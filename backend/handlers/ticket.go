@@ -24,6 +24,7 @@ type CreateTicketRequest struct {
 	Priority    string `json:"priority" binding:"omitempty,oneof=low medium high critical"`
 	Type        string `json:"type" binding:"omitempty,oneof=incident service_request problem change"`
 	Category    string `json:"category" binding:"omitempty,max=50"`
+	LocationID  *uint  `json:"location_id"`
 }
 
 type UpdateTicketRequest struct {
@@ -33,6 +34,7 @@ type UpdateTicketRequest struct {
 	Priority        *string `json:"priority" binding:"omitempty,oneof=low medium high critical"`
 	Type            *string `json:"type" binding:"omitempty,oneof=incident service_request problem change"`
 	Category        *string `json:"category" binding:"omitempty,max=50"`
+	LocationID      *uint   `json:"location_id"`
 	AssigneeID      *uint   `json:"assignee_id"`
 	HoldReason      *string `json:"hold_reason" binding:"omitempty,oneof=awaiting_customer awaiting_vendor pending_approval blocked other"`
 	HoldNote        *string `json:"hold_note"`
@@ -43,35 +45,45 @@ type UpdateTicketRequest struct {
 	ClosureNote     *string `json:"closure_note"`
 }
 
+type LocationBrief struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
 type TicketResponse struct {
-	ID          uint                  `json:"id"`
-	Title       string                `json:"title"`
-	Description string                `json:"description"`
-	Status      models.TicketStatus   `json:"status"`
-	Priority    models.TicketPriority `json:"priority"`
-	Type        models.TicketType     `json:"type"`
-	Category    string                `json:"category"`
-	RequesterID uint                  `json:"requester_id"`
-	Requester   *UserResponse         `json:"requester,omitempty"`
-	AssigneeID  *uint                 `json:"assignee_id"`
-	Assignee    *UserResponse         `json:"assignee,omitempty"`
-	DueDate     *time.Time            `json:"due_date,omitempty"`
-	ResolvedAt  *time.Time            `json:"resolved_at,omitempty"`
-	ClosedAt    *time.Time            `json:"closed_at,omitempty"`
-	HoldReason           *models.HoldReason    `json:"hold_reason,omitempty"`
-	HoldNote             string                `json:"hold_note,omitempty"`
-	IsEscalated          bool                  `json:"is_escalated"`
-	EscalatedAt          *time.Time            `json:"escalated_at,omitempty"`
-	AssignmentAccepted   bool                  `json:"assignment_accepted"`
-	AssignmentAcceptedAt *time.Time            `json:"assignment_accepted_at,omitempty"`
-	SlaPausedAt          *time.Time            `json:"sla_paused_at,omitempty"`
+	ID               uint                   `json:"id"`
+	Title            string                 `json:"title"`
+	Description      string                 `json:"description"`
+	Status           models.TicketStatus    `json:"status"`
+	Priority         models.TicketPriority  `json:"priority"`
+	Type             models.TicketType      `json:"type"`
+	Category         string                 `json:"category"`
+	LocationID       *uint                  `json:"location_id,omitempty"`
+	Location         *LocationBrief         `json:"location,omitempty"`
+	OrganizationID   uint                   `json:"organization_id"`
+	RoutedToOrgID    *uint                  `json:"routed_to_org_id,omitempty"`
+	IsCentralIntake  bool                   `json:"is_central_intake"`
+	RequesterID      uint                   `json:"requester_id"`
+	Requester        *UserResponse          `json:"requester,omitempty"`
+	AssigneeID       *uint                  `json:"assignee_id"`
+	Assignee         *UserResponse          `json:"assignee,omitempty"`
+	DueDate          *time.Time             `json:"due_date,omitempty"`
+	ResolvedAt       *time.Time             `json:"resolved_at,omitempty"`
+	ClosedAt         *time.Time             `json:"closed_at,omitempty"`
+	HoldReason       *models.HoldReason     `json:"hold_reason,omitempty"`
+	HoldNote         string                 `json:"hold_note,omitempty"`
+	IsEscalated      bool                   `json:"is_escalated"`
+	EscalatedAt      *time.Time             `json:"escalated_at,omitempty"`
+	AssignmentAccepted   bool               `json:"assignment_accepted"`
+	AssignmentAcceptedAt *time.Time         `json:"assignment_accepted_at,omitempty"`
+	SlaPausedAt          *time.Time         `json:"sla_paused_at,omitempty"`
 	ResolutionCode       *models.ResolutionCode `json:"resolution_code,omitempty"`
-	ResolutionNote       string                `json:"resolution_note,omitempty"`
-	ClosureCode          *models.ClosureCode   `json:"closure_code,omitempty"`
-	ClosureNote          string                `json:"closure_note,omitempty"`
-	Comments             []CommentResponse     `json:"comments,omitempty"`
-	CreatedAt   time.Time             `json:"created_at"`
-	UpdatedAt   time.Time             `json:"updated_at"`
+	ResolutionNote       string             `json:"resolution_note,omitempty"`
+	ClosureCode          *models.ClosureCode `json:"closure_code,omitempty"`
+	ClosureNote          string             `json:"closure_note,omitempty"`
+	Comments             []CommentResponse  `json:"comments,omitempty"`
+	CreatedAt        time.Time              `json:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at"`
 }
 
 type PaginatedTicketsResponse struct {
@@ -93,6 +105,11 @@ func CreateTicket(c *gin.Context) {
 	}
 
 	userID := c.MustGet("userID").(uint)
+	user, _ := middleware.GetUser(c)
+	orgID := user.OrganizationID
+	if orgID == 0 {
+		orgID = middleware.GetOrganizationID(c)
+	}
 
 	priority := models.PriorityLow
 	if req.Priority != "" {
@@ -112,15 +129,22 @@ func CreateTicket(c *gin.Context) {
 	// Auto-set SLA due date based on priority
 	dueDate := config.GetSLADueDate(string(priority), time.Now())
 
+	locationID := req.LocationID
+	if locationID == nil && user.PrimaryLocationID != nil {
+		locationID = user.PrimaryLocationID
+	}
+
 	ticket := models.Ticket{
-		Title:       req.Title,
-		Description: req.Description,
-		Status:      models.StatusOpen,
-		Priority:    priority,
-		Type:        ticketType,
-		Category:    category,
-		RequesterID: userID,
-		DueDate:     &dueDate,
+		Title:          req.Title,
+		Description:    req.Description,
+		Status:         models.StatusOpen,
+		Priority:       priority,
+		Type:           ticketType,
+		Category:       category,
+		RequesterID:    userID,
+		OrganizationID: orgID,
+		LocationID:     locationID,
+		DueDate:        &dueDate,
 	}
 
 	if err := database.DB.Create(&ticket).Error; err != nil {
@@ -129,7 +153,7 @@ func CreateTicket(c *gin.Context) {
 	}
 
 	// Reload with associations
-	database.DB.Preload("Requester").Preload("Assignee").First(&ticket, ticket.ID)
+	database.DB.Preload("Requester").Preload("Assignee").Preload("Location").First(&ticket, ticket.ID)
 
 	LogAudit(c, models.AuditActionCreate, "ticket", ticket.ID, "",
 		ToJSON(map[string]interface{}{
@@ -139,6 +163,7 @@ func CreateTicket(c *gin.Context) {
 
 	// Send email notification to requester
 	services.NotifyTicketCreated(
+		ticket.OrganizationID,
 		ticket.Requester.Email,
 		ticket.Requester.FirstName,
 		ticket.ID, ticket.Title)
@@ -150,6 +175,11 @@ func CreateTicket(c *gin.Context) {
 func ListTickets(c *gin.Context) {
 	userID := c.MustGet("userID").(uint)
 	userRole := c.MustGet("userRole").(models.Role)
+	user, _ := middleware.GetUser(c)
+	orgID := user.OrganizationID
+	if orgID == 0 {
+		orgID = middleware.GetOrganizationID(c)
+	}
 
 	// Pagination
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
@@ -162,6 +192,15 @@ func ListTickets(c *gin.Context) {
 	}
 
 	query := database.DB.Model(&models.Ticket{})
+	query = applyTicketOrgVisibility(query, user, orgID)
+
+	var scopedQuery *gorm.DB
+	var ok bool
+	scopedQuery, ok = EnforceTicketLocationQuery(c, query)
+	if !ok {
+		return
+	}
+	query = scopedQuery
 
 	// Role-based filtering: employees only see their own tickets
 	if userRole == models.RoleEmployee {
@@ -176,6 +215,21 @@ func ListTickets(c *gin.Context) {
 	// Filter by priority
 	if priority := c.Query("priority"); priority != "" {
 		query = query.Where("priority = ?", priority)
+	}
+
+	// Filter by type
+	if ticketType := c.Query("type"); ticketType != "" {
+		query = query.Where("type = ?", ticketType)
+	}
+
+	// Filter by category
+	if category := c.Query("category"); category != "" {
+		query = query.Where("category = ?", category)
+	}
+
+	// Filter central intake
+	if c.Query("central_intake") == "true" {
+		query = query.Where("is_central_intake = ?", true)
 	}
 
 	// Filter by assignee
@@ -203,7 +257,7 @@ func ListTickets(c *gin.Context) {
 	var tickets []models.Ticket
 	offset := (page - 1) * perPage
 
-	query.Preload("Requester").Preload("Assignee").
+	query.Preload("Requester").Preload("Assignee").Preload("Location").
 		Order("created_at DESC").
 		Offset(offset).Limit(perPage).
 		Find(&tickets)
@@ -239,7 +293,7 @@ func GetTicket(c *gin.Context) {
 	userRole := c.MustGet("userRole").(models.Role)
 
 	var ticket models.Ticket
-	query := database.DB.Preload("Requester").Preload("Assignee").
+	query := database.DB.Preload("Requester").Preload("Assignee").Preload("Location").
 		Preload("Comments", func(db *gorm.DB) *gorm.DB {
 			// Employees cannot see internal comments
 			if userRole == models.RoleEmployee {
@@ -418,6 +472,10 @@ func UpdateTicket(c *gin.Context) {
 		changes = append(changes, fmt.Sprintf("category: %s → %s", ticket.Category, *req.Category))
 		ticket.Category = *req.Category
 	}
+	if req.LocationID != nil && actor.IsStaffMember() {
+		changes = append(changes, fmt.Sprintf("location_id: %v → %v", ticket.LocationID, *req.LocationID))
+		ticket.LocationID = req.LocationID
+	}
 	if req.Status != nil {
 		oldStatus := ticket.Status
 		newStatus := models.TicketStatus(*req.Status)
@@ -558,6 +616,7 @@ func UpdateTicket(c *gin.Context) {
 	if req.Status != nil {
 		oldStatus := oldValues["status"].(models.TicketStatus)
 		services.NotifyTicketStatusChanged(
+			ticket.OrganizationID,
 			ticket.Requester.Email, ticket.Requester.FirstName,
 			ticket.ID, ticket.Title, string(oldStatus), string(ticket.Status))
 
@@ -571,6 +630,7 @@ func UpdateTicket(c *gin.Context) {
 	}
 	if req.AssigneeID != nil && *req.AssigneeID != 0 && ticket.Assignee != nil {
 		services.NotifyTicketAssigned(
+			ticket.OrganizationID,
 			ticket.Assignee.Email, ticket.Assignee.FirstName,
 			ticket.ID, ticket.Title)
 
@@ -927,15 +987,19 @@ func GetPersonalTicketStats(c *gin.Context) {
 
 func toTicketResponse(t models.Ticket) TicketResponse {
 	resp := TicketResponse{
-		ID:          t.ID,
-		Title:       t.Title,
-		Description: t.Description,
-		Status:      t.Status,
-		Priority:    t.Priority,
-		Type:        t.Type,
-		Category:    t.Category,
-		RequesterID: t.RequesterID,
-		AssigneeID:  t.AssigneeID,
+		ID:               t.ID,
+		Title:            t.Title,
+		Description:      t.Description,
+		Status:           t.Status,
+		Priority:         t.Priority,
+		Type:             t.Type,
+		Category:         t.Category,
+		LocationID:       t.LocationID,
+		OrganizationID:   t.OrganizationID,
+		RoutedToOrgID:    t.RoutedToOrgID,
+		IsCentralIntake:  t.IsCentralIntake,
+		RequesterID:      t.RequesterID,
+		AssigneeID:       t.AssigneeID,
 		DueDate:     t.DueDate,
 		ResolvedAt:  t.ResolvedAt,
 		ClosedAt:    t.ClosedAt,
@@ -961,6 +1025,9 @@ func toTicketResponse(t models.Ticket) TicketResponse {
 	if t.Assignee != nil && t.Assignee.ID != 0 {
 		ur := toUserResponse(*t.Assignee)
 		resp.Assignee = &ur
+	}
+	if t.Location != nil && t.Location.ID != 0 {
+		resp.Location = &LocationBrief{ID: t.Location.ID, Name: t.Location.Name}
 	}
 
 	if len(t.Comments) > 0 {

@@ -30,6 +30,7 @@ import {
 } from '../../lib/ticketWorkflow';
 import { getActionButtonClasses, canShowListAccept, getListAcceptLabel } from '../../lib/statusBadges';
 import StatusBadge from '../../components/ui/StatusBadge';
+import { formatInTimezone } from '../../lib/formatDate';
 import { getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
 
 export default function TicketDetailPage() {
@@ -318,6 +319,18 @@ export default function TicketDetailPage() {
     }
   };
 
+  const handleRouteToCentral = async () => {
+    if (!ticket) return;
+    if (!confirm('Route this ticket to central office for HQ handling?')) return;
+    try {
+      const res = await ticketAPI.routeToCentral(ticket.id);
+      setTicket(res.data.ticket);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      alert(axiosErr.response?.data?.error || 'Failed to route ticket');
+    }
+  };
+
   const handleAction = async (action: TicketAction) => {
     if (action.type === 'hold') {
       setShowHoldModal(true);
@@ -534,7 +547,14 @@ export default function TicketDetailPage() {
                   {holdReasonLabels[ticket.hold_reason]}
                 </span>
               )}
-              <span className="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full capitalize">{ticket.type.replace('_', ' ')}</span>
+              {ticket.is_central_intake && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                  Central Intake
+                </span>
+              )}
+              {ticket.location && (
+                <span className="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full">{ticket.location.name}</span>
+              )}
               <span className="text-xs font-medium bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full capitalize">{ticket.category}</span>
             </div>
             <div className="mb-5">
@@ -886,6 +906,15 @@ export default function TicketDetailPage() {
                   )}
                 </div>
               )}
+              {isStaff && canManage && !ticket.is_central_intake && (
+                <button
+                  type="button"
+                  onClick={handleRouteToCentral}
+                  className="w-full py-2 rounded-lg border border-blue-300 text-blue-700 dark:text-blue-300 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                >
+                  Route to Central Office
+                </button>
+              )}
             </div>
 
             {isStaff && canManage && (
@@ -959,6 +988,13 @@ export default function TicketDetailPage() {
                 <span className="text-muted-foreground">Created:</span>
                 <span className="text-foreground">{formatDate(ticket.created_at)}</span>
               </div>
+              {ticket.due_date && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Clock className="h-4 w-4 text-amber-500" />
+                  <span className="text-muted-foreground">SLA Due:</span>
+                  <span className="text-foreground">{formatInTimezone(ticket.due_date)}</span>
+                </div>
+              )}
               {ticket.resolved_at && (
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4 text-emerald-500" />

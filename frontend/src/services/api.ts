@@ -57,6 +57,10 @@ export interface TicketFilters {
   per_page?: number;
   status?: string;
   priority?: string;
+  type?: string;
+  category?: string;
+  location_id?: number;
+  central_intake?: boolean;
   assignee_id?: number;
   unassigned?: boolean;
   search?: string;
@@ -87,10 +91,10 @@ export const ticketAPI = {
   get: (id: number) =>
     api.get<{ ticket: Ticket }>(`/tickets/${id}`),
 
-  create: (data: { title: string; description: string; priority?: string; type?: string; category?: string }) =>
+  create: (data: { title: string; description: string; priority?: string; type?: string; category?: string; location_id?: number }) =>
     api.post<{ ticket: Ticket }>('/tickets', data),
 
-  update: (id: number, data: Partial<Pick<Ticket, 'title' | 'description' | 'status' | 'priority' | 'type' | 'category' | 'hold_reason' | 'hold_note' | 'resolution_code' | 'resolution_note' | 'closure_code' | 'closure_note'> & { assignee_id: number | null; force_close?: boolean }>) =>
+  update: (id: number, data: Partial<Pick<Ticket, 'title' | 'description' | 'status' | 'priority' | 'type' | 'category' | 'hold_reason' | 'hold_note' | 'resolution_code' | 'resolution_note' | 'closure_code' | 'closure_note'> & { assignee_id: number | null; location_id?: number | null; force_close?: boolean }>) =>
     api.put<{ ticket: Ticket }>(`/tickets/${id}`, data),
 
   accept: (id: number) =>
@@ -98,6 +102,9 @@ export const ticketAPI = {
 
   escalate: (id: number) =>
     api.post<{ ticket: Ticket }>(`/tickets/${id}/escalate`),
+
+  routeToCentral: (id: number) =>
+    api.post<{ ticket: Ticket }>(`/tickets/${id}/route-to-central`),
 
   delete: (id: number) =>
     api.delete(`/tickets/${id}`),
@@ -161,6 +168,12 @@ export const adminAPI = {
     api.put(`/admin/users/${id}`, data),
 
   listAgents: () => api.get('/agents'),
+
+  listAuditLogs: (params?: { page?: number; per_page?: number; entity_type?: string; action?: string }) =>
+    api.get('/admin/audit-logs', { params }),
+
+  exportTickets: (params?: Record<string, string | number | boolean>) =>
+    api.get('/admin/tickets/export', { params, responseType: 'blob' }),
 };
 
 // --- Notification API ---

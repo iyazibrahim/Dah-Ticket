@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { itamAPI } from '../../services/itamAPI';
 import { usePermissions } from '../../hooks/usePermissions';
+import LookupSettingsPanel from '../../components/admin/LookupSettingsPanel';
 import PageContainer from '../../components/PageContainer';
 import type {
   AssetCategory,
@@ -34,7 +35,7 @@ import type {
   Vendor,
 } from '../../types/itam';
 
-type SettingsTab = 'general' | 'notifications' | 'email' | 'telegram' | 'itam' | 'reference';
+type SettingsTab = 'general' | 'notifications' | 'email' | 'telegram' | 'itam' | 'ticket' | 'site_inspection' | 'reference';
 type RefKey = 'categories' | 'types' | 'statuses' | 'conditions' | 'locations' | 'vendors';
 type RefItem = AssetCategory | AssetType | AssetStatus | AssetCondition | Location | Vendor;
 
@@ -665,13 +666,15 @@ export default function ITAMSettingsPage() {
         </div>
       )}
 
-      <div className="bg-card border border-border rounded-2xl p-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+      <div className="bg-card border border-border rounded-2xl p-2 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
         {([
           ['general', 'General', Building2],
           ['notifications', 'Notifications', Bell],
           ['email', 'Email', Mail],
           ['telegram', 'Telegram', MessageCircle],
           ['itam', 'ITAM', Timer],
+          ['ticket', 'Tickets', Tags],
+          ['site_inspection', 'Inspections', ShieldAlert],
           ['reference', 'Reference', Layers],
         ] as const).map(([key, label, Icon]) => (
           <button
@@ -973,6 +976,23 @@ export default function ITAMSettingsPage() {
             )}
           </div>
 
+        </div>
+      )}
+
+      {sectionTab === 'ticket' && (
+        <div className="bg-card border border-border rounded-xl p-4">
+          <h3 className="font-semibold text-foreground mb-2">Ticket Configuration</h3>
+          <p className="text-sm text-muted-foreground mb-4">Manage categories, hold reasons, resolution and closure codes.</p>
+          <LookupSettingsPanel groups={['ticket_category', 'hold_reason', 'resolution_code', 'closure_code']} />
+        </div>
+      )}
+
+      {sectionTab === 'site_inspection' && (
+        <div className="space-y-4">
+          <div className="bg-card border border-border rounded-xl p-4">
+            <h3 className="font-semibold text-foreground mb-2">Site Inspection Lookups</h3>
+            <LookupSettingsPanel groups={['finding_type', 'finding_severity', 'finding_threshold', 'device_type']} />
+          </div>
         </div>
       )}
 

@@ -106,7 +106,7 @@ func AddComment(c *gin.Context) {
 			var requester models.User
 			if database.DB.First(&requester, ticket.RequesterID).Error == nil {
 				commenterName := comment.Author.FirstName + " " + comment.Author.LastName
-				services.NotifyNewComment(requester.Email, requester.FirstName, ticket.ID, ticket.Title, commenterName)
+				services.NotifyNewComment(ticket.OrganizationID, requester.Email, requester.FirstName, ticket.ID, ticket.Title, commenterName)
 				
 				CreateInAppNotification(
 					ticket.RequesterID, 

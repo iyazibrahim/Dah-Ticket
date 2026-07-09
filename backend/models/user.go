@@ -19,7 +19,8 @@ type User struct {
 	ID        uint           `gorm:"primaryKey" json:"id"`
 	FirstName string         `gorm:"size:100;not null" json:"first_name"`
 	LastName  string         `gorm:"size:100;not null" json:"last_name"`
-	Email     string         `gorm:"size:255;not null;uniqueIndex" json:"email"`
+	Email            string `gorm:"size:255;not null;uniqueIndex:idx_org_email" json:"email"`
+	OrganizationID   uint   `gorm:"not null;index;default:1;uniqueIndex:idx_org_email" json:"organization_id"`
 	Password  string         `gorm:"not null" json:"-"`
 	Role      Role           `gorm:"type:varchar(20);default:'employee'" json:"role"`
 	IsAdmin   bool           `gorm:"default:false" json:"is_admin"`

@@ -32,6 +32,7 @@ const navItems: NavItem[] = [
   { label: 'Site Inspections', href: '/itam/pm', icon: ClipboardCheck, show: (p) => p.isStaff },
   { label: 'Users', href: '/admin/users', icon: Users, show: (p) => p.canManageUsers },
   { label: 'Analytics', href: '/admin/analytics', icon: BarChart3, show: (p) => p.isFullAdmin },
+  { label: 'Audit Logs', href: '/admin/audit-logs', icon: ClipboardCheck, show: (p) => p.isFullAdmin },
   { label: 'Settings', href: '/admin/settings', icon: Settings2, show: (p) => p.canAccessSettings },
 ];
 

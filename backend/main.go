@@ -25,6 +25,9 @@ func main() {
 
 	// Run Database Migrations
 	err := database.DB.AutoMigrate(
+		&models.Organization{},
+		&models.Domain{},
+		&models.SystemLookup{},
 		&models.User{},
 		&models.Ticket{},
 		&models.Comment{},
@@ -56,9 +59,11 @@ func main() {
 	log.Println("Database migrations completed successfully")
 
 	// Seed default admin user
+	database.SeedDefaultOrganization()
 	database.SeedDefaultAdmin()
 	database.SeedDefaultUsers()
 	database.SeedITAMDefaults()
+	database.SeedSystemLookups()
 	database.SyncSLATargetsFromDB()
 
 	// Initialize email notification service (env fallback, then DB override)
@@ -80,6 +85,7 @@ func main() {
 
 	// --- Public Routes (no auth required) ---
 	api := r.Group("/api")
+	api.Use(middleware.TenantResolver())
 	{
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(200, gin.H{
@@ -99,7 +105,7 @@ func main() {
 
 	// --- Protected Routes (auth required) ---
 	protected := api.Group("")
-	protected.Use(middleware.AuthRequired())
+	protected.Use(middleware.AuthRequired(), middleware.RequireOrgAccess())
 	{
 		protected.GET("/auth/me", handlers.GetMe)
 		protected.PUT("/auth/me", handlers.UpdateMe)
@@ -124,6 +130,7 @@ func main() {
 			tickets.PUT("/:id", handlers.UpdateTicket)
 			tickets.POST("/:id/accept", handlers.AcceptTicket)
 			tickets.POST("/:id/escalate", handlers.EscalateTicket)
+			tickets.POST("/:id/route-to-central", handlers.RouteTicketToCentral)
 			tickets.DELETE("/:id", handlers.DeleteTicket)
 
 			// Comment routes (nested under tickets)
@@ -137,6 +144,9 @@ func main() {
 			tickets.GET("/:id/attachments/:attachmentId/download", handlers.DownloadAttachment)
 			tickets.DELETE("/:id/attachments/:attachmentId", handlers.DeleteAttachment)
 		}
+
+		// System lookups (read-only for authenticated users)
+		protected.GET("/lookups/:group", handlers.ListLookups)
 
 		// Knowledge Base routes (all authenticated users can read)
 		kb := protected.Group("/kb")
@@ -224,6 +234,22 @@ func main() {
 		admin.GET("/users/:id", handlers.AdminGetUser)
 		admin.POST("/users", handlers.AdminCreateUser)
 		admin.PUT("/users/:id", handlers.AdminUpdateUser)
+
+		admin.GET("/audit-logs", handlers.ListAuditLogs)
+		admin.GET("/tickets/export", handlers.ExportTicketsCSV)
+
+		// System lookup management
+		admin.GET("/lookups", handlers.AdminListLookups)
+		admin.POST("/lookups/:group", handlers.AdminCreateLookup)
+		admin.PUT("/lookups/:group/:id", handlers.AdminUpdateLookup)
+		admin.DELETE("/lookups/:group/:id", handlers.AdminDeleteLookup)
+
+		// Organization management (super admin)
+		admin.GET("/organizations", handlers.ListOrganizations)
+		admin.GET("/organizations/:id", handlers.GetOrganization)
+		admin.POST("/organizations", handlers.CreateOrganization)
+		admin.GET("/organizations/:id/domains", handlers.ListDomains)
+		admin.POST("/organizations/:id/domains", handlers.CreateDomain)
 
 		// Analytics endpoints
 		analytics := admin.Group("/analytics")

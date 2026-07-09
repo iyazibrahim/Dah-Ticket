@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"dahticket-backend/database"
+	"dahticket-backend/middleware"
 	"dahticket-backend/models"
 
 	"github.com/gin-gonic/gin"
@@ -510,6 +511,14 @@ func CreateLocation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Location name is required"})
 		return
 	}
+	if req.LocationType == "" {
+		req.LocationType = "site"
+	}
+	user, _ := middleware.GetUser(c)
+	req.OrganizationID = user.OrganizationID
+	if req.OrganizationID == 0 {
+		req.OrganizationID = middleware.GetOrganizationID(c)
+	}
 
 	dup, err := hasDuplicateName(&models.Location{}, req.Name, 0)
 	if err != nil {
@@ -565,6 +574,11 @@ func UpdateLocation(c *gin.Context) {
 	location.Name = req.Name
 	location.Address = req.Address
 	location.IsActive = req.IsActive
+	location.LocationType = req.LocationType
+	if req.LocationType != "" {
+		location.LocationType = req.LocationType
+	}
+	location.ParentID = req.ParentID
 
 	if err := database.DB.Save(&location).Error; err != nil {
 		if isDuplicateKeyError(err) {

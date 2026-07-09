@@ -14,11 +14,12 @@ import (
 
 // Claims represents the JWT payload.
 type Claims struct {
-	UserID       uint        `json:"user_id"`
-	Email        string      `json:"email"`
-	Role         models.Role `json:"role"`
-	IsAdmin      bool        `json:"is_admin"`
-	IsSuperAdmin bool        `json:"is_super_admin"`
+	UserID         uint        `json:"user_id"`
+	Email          string      `json:"email"`
+	Role           models.Role `json:"role"`
+	IsAdmin        bool        `json:"is_admin"`
+	IsSuperAdmin   bool        `json:"is_super_admin"`
+	OrganizationID uint        `json:"organization_id"`
 	jwt.RegisteredClaims
 }
 
@@ -69,6 +70,7 @@ func AuthRequired() gin.HandlerFunc {
 		c.Set("userEmail", user.Email)
 		c.Set("userRole", user.Role)
 		c.Set("user", user)
+		c.Set("organizationID", user.OrganizationID)
 		c.Next()
 	}
 }

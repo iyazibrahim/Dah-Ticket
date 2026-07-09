@@ -42,6 +42,8 @@ export interface Location {
   id: number;
   name: string;
   address: string;
+  location_type?: string;
+  parent_id?: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -127,6 +129,11 @@ export interface ITAMSettings {
   has_telegram_bot_token?: boolean;
   kb_max_upload_mb?: number;
   allow_public_registration?: boolean;
+  ticket_attachment_max_mb?: number;
+  pm_ticket_priority?: string;
+  pm_ticket_type?: string;
+  pm_ticket_category?: string;
+  organization_id?: number;
 }
 
 export interface ITAMSettingsUpdate extends Partial<ITAMSettings> {

@@ -13,7 +13,9 @@ import (
 
 	"dahticket-backend/config"
 	"dahticket-backend/database"
+	"dahticket-backend/middleware"
 	"dahticket-backend/models"
+	"dahticket-backend/services"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jung-kurt/gofpdf"
@@ -1029,7 +1031,27 @@ func TriggerPMTicket(c *gin.Context) {
 	}
 
 	userID := c.MustGet("userID").(uint)
-	dueDate := config.GetSLADueDate(string(models.PriorityMedium), time.Now())
+	user, _ := middleware.GetUser(c)
+	orgID := user.OrganizationID
+	if orgID == 0 {
+		orgID = middleware.GetOrganizationID(c)
+	}
+
+	settings, _ := services.GetAppSettings(orgID)
+	priority := models.PriorityMedium
+	if settings.PMTicketPriority != "" {
+		priority = models.TicketPriority(settings.PMTicketPriority)
+	}
+	ticketType := models.TypeProblem
+	if settings.PMTicketType != "" {
+		ticketType = models.TicketType(settings.PMTicketType)
+	}
+	category := "network"
+	if settings.PMTicketCategory != "" {
+		category = settings.PMTicketCategory
+	}
+
+	dueDate := config.GetSLADueDate(string(priority), time.Now())
 
 	title := fmt.Sprintf("PM Task - %s - %s", report.Location.Name, report.Month)
 	description := fmt.Sprintf("Preventive maintenance report for %s (%s). Summary: %s", report.Location.Name, report.Month, report.Summary)
@@ -1037,15 +1059,18 @@ func TriggerPMTicket(c *gin.Context) {
 		description = fmt.Sprintf("Preventive maintenance report for %s (%s).", report.Location.Name, report.Month)
 	}
 
+	locID := report.LocationID
 	ticket := models.Ticket{
-		Title:       title,
-		Description: description,
-		Status:      models.StatusOpen,
-		Priority:    models.PriorityMedium,
-		Type:        models.TypeProblem,
-		Category:    "network",
-		RequesterID: userID,
-		DueDate:     &dueDate,
+		Title:          title,
+		Description:    description,
+		Status:         models.StatusOpen,
+		Priority:       priority,
+		Type:           ticketType,
+		Category:       category,
+		RequesterID:    userID,
+		OrganizationID: orgID,
+		LocationID:     &locID,
+		DueDate:        &dueDate,
 	}
 
 	err = database.DB.Transaction(func(tx *gorm.DB) error {

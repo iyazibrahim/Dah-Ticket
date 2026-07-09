@@ -49,49 +49,133 @@ export const EMPTY_DESCRIPTION_PARTS: DescriptionParts = {
   recommended_action: '',
 };
 
-/** Starter text templates keyed by finding type (user can edit after insert). */
-export const DESCRIPTION_TEMPLATES: Record<string, DescriptionParts> = {
-  health_check: {
-    what_is_wrong: 'Routine check found the device is not operating as expected.',
-    impact: 'Site operations may be affected until this is checked and confirmed.',
-    recommended_action: 'Inspect the device, confirm status, and note any follow-up needed.',
+const SEVERITY_LABEL: Record<string, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  critical: 'Critical',
+};
+
+const THRESHOLD_LABEL: Record<string, string> = {
+  normal: 'Normal',
+  warning: 'Warning',
+  danger: 'Danger',
+};
+
+/** Finding-type opener for the "what is wrong" field. */
+const FINDING_TYPE_OPENERS: Record<string, string> = {
+  health_check: 'Routine inspection of the device found',
+  performance_issue: 'Performance testing during inspection showed',
+  hardware_failure: 'Hardware review during inspection showed',
+  connectivity_issue: 'Network and connection checks during inspection showed',
+  overheating: 'Temperature and heat checks during inspection showed',
+  configuration_issue: 'Configuration review during inspection showed',
+  replacement_needed: 'Physical condition review during inspection showed',
+  other: 'Site inspection observations showed',
+};
+
+type SeverityThresholdKey =
+  | 'low_normal' | 'low_warning' | 'low_danger'
+  | 'medium_normal' | 'medium_warning' | 'medium_danger'
+  | 'high_normal' | 'high_warning' | 'high_danger'
+  | 'critical_normal' | 'critical_warning' | 'critical_danger';
+
+/** Impact and action templates keyed by severity + threshold. */
+const SEVERITY_THRESHOLD_BODY: Record<SeverityThresholdKey, Omit<DescriptionParts, 'what_is_wrong'> & { what_detail: string }> = {
+  low_normal: {
+    what_detail: 'no major concerns; the device appears generally healthy.',
+    impact: 'No noticeable effect on staff or systems at this time.',
+    recommended_action: 'Continue regular monitoring. No action needed now.',
   },
-  performance_issue: {
-    what_is_wrong: 'The device is running slower or less reliably than expected.',
-    impact: 'Users at this location may experience delays or limited capability.',
-    recommended_action: 'Review load and settings, then correct or escalate if it continues.',
+  low_warning: {
+    what_detail: 'a minor item that should be watched.',
+    impact: 'Limited effect; unlikely to disrupt daily work.',
+    recommended_action: 'Recheck at the next inspection and note any change.',
   },
-  hardware_failure: {
-    what_is_wrong: 'Hardware appears damaged, failed, or no longer working properly.',
-    impact: 'Service at this location is reduced or unavailable until repaired or replaced.',
-    recommended_action: 'Arrange repair or replacement and update asset records when done.',
+  low_danger: {
+    what_detail: 'an unexpected reading that needs verification.',
+    impact: 'May become a problem if left unchecked.',
+    recommended_action: 'Verify the reading and confirm whether follow-up is needed.',
   },
-  connectivity_issue: {
-    what_is_wrong: 'Network connection is unstable, intermittent, or unavailable.',
-    impact: 'Staff and systems at this site may lose access to online services.',
-    recommended_action: 'Check cabling, ports, and wireless coverage; restore the connection.',
+  medium_normal: {
+    what_detail: 'the device is working but not fully healthy.',
+    impact: 'Some users may notice slower or less reliable performance.',
+    recommended_action: 'Schedule a standard check and correction within normal maintenance.',
   },
-  overheating: {
-    what_is_wrong: 'The device is running hotter than normal during inspection.',
-    impact: 'Continued heat may cause downtime or shorten the life of the equipment.',
-    recommended_action: 'Improve cooling/ventilation and re-check temperature after changes.',
+  medium_warning: {
+    what_detail: 'condition is below the expected level.',
+    impact: 'Staff may experience intermittent issues at this site.',
+    recommended_action: 'Investigate and plan a fix within the next maintenance window.',
   },
-  configuration_issue: {
-    what_is_wrong: 'Device settings do not match the expected or approved configuration.',
-    impact: 'Incorrect settings may cause security, access, or reliability problems.',
-    recommended_action: 'Apply the correct configuration and verify the device after the change.',
+  medium_danger: {
+    what_detail: 'condition is clearly degraded.',
+    impact: 'Operations at this location may be affected if not addressed.',
+    recommended_action: 'Arrange inspection and repair as a priority item.',
   },
-  replacement_needed: {
-    what_is_wrong: 'This equipment is no longer suitable for continued use at the site.',
-    impact: 'Leaving it in place risks further outages and higher support effort.',
-    recommended_action: 'Plan replacement, remove the old unit from inventory when swapped.',
+  high_normal: {
+    what_detail: 'a significant problem that needs prompt attention.',
+    impact: 'Important services at this site may be disrupted.',
+    recommended_action: 'Escalate to IT support and target resolution within 1–2 business days.',
   },
-  other: {
-    what_is_wrong: 'Describe what was observed during the site inspection.',
-    impact: 'Describe how this affects staff, systems, or site operations.',
-    recommended_action: 'Describe the recommended next steps.',
+  high_warning: {
+    what_detail: 'the situation is poor and worsening.',
+    impact: 'Users are likely experiencing noticeable problems now.',
+    recommended_action: 'Escalate immediately and assign someone to resolve within 24 hours.',
+  },
+  high_danger: {
+    what_detail: 'the device or system is in a failing state.',
+    impact: 'Site operations are at serious risk of interruption.',
+    recommended_action: 'Treat as urgent: diagnose and restore service as soon as possible.',
+  },
+  critical_normal: {
+    what_detail: 'failure or imminent failure affecting operations.',
+    impact: 'Critical systems at this site are affected or unavailable.',
+    recommended_action: 'Respond immediately and restore service before end of business day.',
+  },
+  critical_warning: {
+    what_detail: 'active failure affecting site operations.',
+    impact: 'Staff cannot rely on this equipment for normal work.',
+    recommended_action: 'Emergency response: assign owner and begin recovery now.',
+  },
+  critical_danger: {
+    what_detail: 'the device is down or unsafe to continue using.',
+    impact: 'Major outage or safety risk at this location.',
+    recommended_action: 'Emergency action required: isolate, replace, or restore service immediately.',
   },
 };
+
+function severityThresholdKey(severity: string, threshold: string): SeverityThresholdKey {
+  const key = `${severity}_${threshold}` as SeverityThresholdKey;
+  if (key in SEVERITY_THRESHOLD_BODY) return key;
+  return 'medium_normal';
+}
+
+/** Build description fields from finding type + severity + threshold. */
+export function getDescriptionTemplate(
+  findingType: string,
+  severity: string,
+  threshold: string,
+): DescriptionParts {
+  const opener = FINDING_TYPE_OPENERS[findingType] ?? FINDING_TYPE_OPENERS.other;
+  const body = SEVERITY_THRESHOLD_BODY[severityThresholdKey(severity, threshold)];
+  return {
+    what_is_wrong: `${opener} ${body.what_detail}`,
+    impact: body.impact,
+    recommended_action: body.recommended_action,
+  };
+}
+
+/** Human-readable label for the template hint under Insert template. */
+export function getDescriptionTemplateLabel(
+  findingType: string,
+  severity: string,
+  threshold: string,
+): string {
+  const typeLabel = FINDING_TYPE_LABEL[findingType] ?? 'Other';
+  const sev = SEVERITY_LABEL[severity] ?? severity;
+  const thr = THRESHOLD_LABEL[threshold] ?? threshold;
+  return `${typeLabel} · ${sev} · ${thr}`;
+}
 
 const DESC_SECTION_WRONG = 'What is wrong:';
 const DESC_SECTION_IMPACT = 'Impact:';

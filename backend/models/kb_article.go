@@ -25,6 +25,8 @@ type KBArticle struct {
 	ApprovalStatus string `gorm:"type:varchar(30);default:'draft';index" json:"approval_status"`
 	ViewCount      int    `gorm:"default:0" json:"view_count"`
 
+	OrganizationID uint `gorm:"not null;index;default:1" json:"organization_id"`
+
 	AuthorID uint `gorm:"not null;index" json:"author_id"`
 	Author   User `gorm:"foreignKey:AuthorID" json:"author,omitempty"`
 

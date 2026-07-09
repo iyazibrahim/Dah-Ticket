@@ -68,14 +68,15 @@ func SeedDefaultAdmin() {
 	}
 
 	admin := models.User{
-		FirstName:    "System",
-		LastName:     "Admin",
-		Email:        "admin@dahticket.com",
-		Password:     string(hashedPassword),
-		Role:         models.RoleManager,
-		IsAdmin:      true,
-		IsSuperAdmin: true,
-		IsActive:     true,
+		FirstName:      "System",
+		LastName:       "Admin",
+		Email:          "admin@dahticket.com",
+		Password:       string(hashedPassword),
+		Role:           models.RoleManager,
+		IsAdmin:        true,
+		IsSuperAdmin:   true,
+		IsActive:       true,
+		OrganizationID: 1,
 	}
 
 	if err := DB.Create(&admin).Error; err != nil {

@@ -50,6 +50,7 @@ type UserResponse struct {
 	IsAdmin           bool        `json:"is_admin"`
 	IsSuperAdmin      bool        `json:"is_super_admin"`
 	IsActive          bool        `json:"is_active"`
+	OrganizationID    uint        `json:"organization_id"`
 	PrimaryLocationID *uint       `json:"primary_location_id,omitempty"`
 	CreatedAt         time.Time   `json:"created_at"`
 }
@@ -59,13 +60,13 @@ type UserResponse struct {
 // GetRegistrationStatus returns whether public self-registration is open.
 func GetRegistrationStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"allow_public_registration": services.IsPublicRegistrationAllowed(),
+		"allow_public_registration": services.IsPublicRegistrationAllowed(middleware.GetOrganizationID(c)),
 	})
 }
 
 // Register creates a new user account with the "employee" role.
 func Register(c *gin.Context) {
-	if !services.IsPublicRegistrationAllowed() {
+	if !services.IsPublicRegistrationAllowed(middleware.GetOrganizationID(c)) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Public registration is disabled. Contact an administrator to create an account."})
 		return
 	}
@@ -89,12 +90,13 @@ func Register(c *gin.Context) {
 	}
 
 	user := models.User{
-		FirstName: req.FirstName,
-		LastName:  req.LastName,
-		Email:     req.Email,
-		Password:  string(hashedPassword),
-		Role:      models.RoleEmployee,
-		IsActive:  true,
+		FirstName:      req.FirstName,
+		LastName:       req.LastName,
+		Email:          req.Email,
+		Password:       string(hashedPassword),
+		Role:           models.RoleEmployee,
+		IsActive:       true,
+		OrganizationID: middleware.GetOrganizationID(c),
 	}
 
 	if err := database.DB.Create(&user).Error; err != nil {
@@ -224,11 +226,12 @@ func UpdateMe(c *gin.Context) {
 
 func generateToken(user models.User) (string, error) {
 	claims := middleware.Claims{
-		UserID:       user.ID,
-		Email:        user.Email,
-		Role:         user.Role,
-		IsAdmin:      user.IsAdmin,
-		IsSuperAdmin: user.IsSuperAdmin,
+		UserID:         user.ID,
+		Email:          user.Email,
+		Role:           user.Role,
+		IsAdmin:        user.IsAdmin,
+		IsSuperAdmin:   user.IsSuperAdmin,
+		OrganizationID: user.OrganizationID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(config.GetJWTExpiration())),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -250,6 +253,7 @@ func toUserResponse(user models.User) UserResponse {
 		IsAdmin:           user.IsAdmin,
 		IsSuperAdmin:      user.IsSuperAdmin,
 		IsActive:          user.IsActive,
+		OrganizationID:    user.OrganizationID,
 		PrimaryLocationID: user.PrimaryLocationID,
 		CreatedAt:         user.CreatedAt,
 	}

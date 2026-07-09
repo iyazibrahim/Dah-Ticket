@@ -9,6 +9,7 @@ export interface User {
   is_admin: boolean;
   is_super_admin: boolean;
   is_active: boolean;
+  organization_id?: number;
   primary_location_id?: number | null;
   created_at: string;
 }
@@ -43,6 +44,11 @@ export interface Ticket {
   priority: 'low' | 'medium' | 'high' | 'critical';
   type: 'incident' | 'service_request' | 'problem' | 'change';
   category: string;
+  location_id?: number;
+  location?: { id: number; name: string };
+  organization_id?: number;
+  routed_to_org_id?: number;
+  is_central_intake?: boolean;
   requester_id: number;
   requester?: User;
   assignee_id?: number;

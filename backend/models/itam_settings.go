@@ -2,8 +2,10 @@ package models
 
 import "time"
 
+// ITAMSettings holds per-organization configuration (also known as OrganizationSettings).
 type ITAMSettings struct {
 	ID               uint      `gorm:"primaryKey" json:"id"`
+	OrganizationID   uint      `gorm:"not null;uniqueIndex;default:1" json:"organization_id"`
 	AssetTagPrefix   string    `gorm:"type:varchar(20);default:'DPA'" json:"asset_tag_prefix"`
 	AutoGenerateTag  bool      `gorm:"default:true" json:"auto_generate_tag"`
 	NextSequence     uint      `gorm:"default:1" json:"next_sequence"`
@@ -32,6 +34,10 @@ type ITAMSettings struct {
 	TelegramChatID        string `gorm:"type:varchar(64)" json:"telegram_chat_id"`
 	KBMaxUploadMB            int  `gorm:"default:5" json:"kb_max_upload_mb"`
 	AllowPublicRegistration  bool `gorm:"default:true" json:"allow_public_registration"`
+	TicketAttachmentMaxMB    int  `gorm:"default:10" json:"ticket_attachment_max_mb"`
+	PMTicketPriority         string `gorm:"type:varchar(20);default:'medium'" json:"pm_ticket_priority"`
+	PMTicketType             string `gorm:"type:varchar(30);default:'problem'" json:"pm_ticket_type"`
+	PMTicketCategory         string `gorm:"type:varchar(50);default:'network'" json:"pm_ticket_category"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }

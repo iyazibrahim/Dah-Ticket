@@ -9,37 +9,44 @@ import (
 )
 
 var (
-	settingsMu       sync.RWMutex
-	cachedSettings   models.ITAMSettings
-	settingsLoadedAt time.Time
+	settingsMu    sync.RWMutex
+	settingsCache = map[uint]models.ITAMSettings{}
+	settingsTTL   = map[uint]time.Time{}
 	settingsCacheTTL = 30 * time.Second
 )
 
-// GetAppSettings returns ITAM/system settings with a short in-memory cache.
-func GetAppSettings() (models.ITAMSettings, error) {
+// GetAppSettings returns organization settings with a short in-memory cache.
+func GetAppSettings(orgID uint) (models.ITAMSettings, error) {
+	if orgID == 0 {
+		orgID = 1
+	}
+
 	settingsMu.RLock()
-	if !settingsLoadedAt.IsZero() && time.Since(settingsLoadedAt) < settingsCacheTTL {
-		s := cachedSettings
+	if loaded, ok := settingsTTL[orgID]; ok && !loaded.IsZero() && time.Since(loaded) < settingsCacheTTL {
+		s := settingsCache[orgID]
 		settingsMu.RUnlock()
 		return s, nil
 	}
 	settingsMu.RUnlock()
 
 	var settings models.ITAMSettings
-	if err := database.DB.First(&settings).Error; err != nil {
-		return settings, err
+	if err := database.DB.Where("organization_id = ?", orgID).First(&settings).Error; err != nil {
+		// Fallback to first row for legacy single-tenant data
+		if err2 := database.DB.First(&settings).Error; err2 != nil {
+			return settings, err
+		}
 	}
 
 	settingsMu.Lock()
-	cachedSettings = settings
-	settingsLoadedAt = time.Now()
+	settingsCache[orgID] = settings
+	settingsTTL[orgID] = time.Now()
 	settingsMu.Unlock()
 	return settings, nil
 }
 
 // IsPublicRegistrationAllowed reports whether open self-registration is permitted.
-func IsPublicRegistrationAllowed() bool {
-	settings, err := GetAppSettings()
+func IsPublicRegistrationAllowed(orgID uint) bool {
+	settings, err := GetAppSettings(orgID)
 	if err != nil {
 		return true
 	}
@@ -49,7 +56,8 @@ func IsPublicRegistrationAllowed() bool {
 // InvalidateSettingsCache clears cached settings after admin updates.
 func InvalidateSettingsCache() {
 	settingsMu.Lock()
-	settingsLoadedAt = time.Time{}
+	settingsCache = map[uint]models.ITAMSettings{}
+	settingsTTL = map[uint]time.Time{}
 	settingsMu.Unlock()
 	RefreshEmailConfig()
 }

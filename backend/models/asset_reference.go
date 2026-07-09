@@ -49,10 +49,14 @@ type AssetCondition struct {
 }
 
 type Location struct {
-	ID        uint           `gorm:"primaryKey" json:"id"`
-	Name      string         `gorm:"type:varchar(100);not null;unique" json:"name"`
-	Address   string         `gorm:"type:text" json:"address"`
-	IsActive  bool           `gorm:"default:true" json:"is_active"`
+	ID             uint           `gorm:"primaryKey" json:"id"`
+	OrganizationID uint           `gorm:"not null;index;default:1;uniqueIndex:idx_org_location_name" json:"organization_id"`
+	Name           string         `gorm:"type:varchar(100);not null;uniqueIndex:idx_org_location_name" json:"name"`
+	Address        string         `gorm:"type:text" json:"address"`
+	LocationType   string         `gorm:"type:varchar(20);default:'site'" json:"location_type"`
+	ParentID       *uint          `gorm:"index" json:"parent_id,omitempty"`
+	Parent         *Location      `gorm:"foreignKey:ParentID" json:"parent,omitempty"`
+	IsActive       bool           `gorm:"default:true" json:"is_active"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

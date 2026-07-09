@@ -12,6 +12,7 @@ import (
 	"dahticket-backend/database"
 	"dahticket-backend/middleware"
 	"dahticket-backend/models"
+	"dahticket-backend/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -421,8 +422,12 @@ func UploadKBImage(c *gin.Context) {
 		return
 	}
 
-	if file.Size > 5*1024*1024 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Image must be under 5MB"})
+	maxMB := int64(5)
+	if settings, err := services.GetAppSettings(middleware.GetOrganizationID(c)); err == nil && settings.KBMaxUploadMB > 0 {
+		maxMB = int64(settings.KBMaxUploadMB)
+	}
+	if file.Size > maxMB*1024*1024 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Image must be under %dMB", maxMB)})
 		return
 	}
 

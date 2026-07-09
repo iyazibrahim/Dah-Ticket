@@ -8,7 +8,8 @@ import (
 
 type Asset struct {
 	ID             uint           `gorm:"primaryKey" json:"id"`
-	AssetTag       string         `gorm:"type:varchar(50);uniqueIndex" json:"asset_tag"`
+	OrganizationID uint           `gorm:"not null;index;default:1;uniqueIndex:idx_org_asset_tag" json:"organization_id"`
+	AssetTag       string         `gorm:"type:varchar(50);not null;uniqueIndex:idx_org_asset_tag" json:"asset_tag"`
 	SerialNumber   string         `gorm:"type:varchar(100)" json:"serial_number"`
 	Name           string         `gorm:"type:varchar(200);not null" json:"name"`
 	Description    string         `gorm:"type:text" json:"description"`

@@ -10,6 +10,7 @@ import CreateTicketPage from './pages/tickets/CreateTicketPage';
 import TicketDetailPage from './pages/tickets/TicketDetailPage';
 import UsersPage from './pages/admin/UsersPage';
 import AnalyticsPage from './pages/admin/AnalyticsPage';
+import AuditLogsPage from './pages/admin/AuditLogsPage';
 import KnowledgeBasePage from './pages/knowledge/KnowledgeBasePage';
 import ArticleDetailPage from './pages/knowledge/ArticleDetailPage';
 import ArticleEditorPage from './pages/knowledge/ArticleEditorPage';
@@ -60,6 +61,7 @@ function App() {
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/admin/users" element={<RoleProtectedRoute guard="fullAdmin"><UsersPage /></RoleProtectedRoute>} />
               <Route path="/admin/analytics" element={<RoleProtectedRoute guard="fullAdmin"><AnalyticsPage /></RoleProtectedRoute>} />
+              <Route path="/admin/audit-logs" element={<RoleProtectedRoute guard="fullAdmin"><AuditLogsPage /></RoleProtectedRoute>} />
               <Route path="/itam" element={<RoleProtectedRoute guard="staff"><ITAMDashboard /></RoleProtectedRoute>} />
               <Route path="/itam/scanner" element={<RoleProtectedRoute guard="staff"><AssetScannerPage /></RoleProtectedRoute>} />
               <Route path="/itam/pm" element={<RoleProtectedRoute guard="staff"><PMReportsPage /></RoleProtectedRoute>} />

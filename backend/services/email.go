@@ -28,7 +28,7 @@ func InitEmail() {
 
 // RefreshEmailConfig reloads email transport from DB settings, falling back to env.
 func RefreshEmailConfig() {
-	settings, err := GetAppSettings()
+	settings, err := GetAppSettings(1)
 	if err == nil && settings.EmailEnabled && strings.TrimSpace(settings.SMTPHost) != "" {
 		fromName := strings.TrimSpace(settings.SMTPFromName)
 		if fromName == "" {
@@ -75,7 +75,7 @@ func RefreshEmailConfig() {
 }
 
 func isEmailChannelEnabled() bool {
-	settings, err := GetAppSettings()
+	settings, err := GetAppSettings(1)
 	if err != nil {
 		return emailConfig.Enabled
 	}
@@ -137,23 +137,23 @@ func SendEmailSync(to, subject, htmlBody string) error {
 // --- Notification Templates ---
 
 // NotifyTicketCreated sends notification when a new ticket is created.
-func NotifyTicketCreated(requesterEmail, requesterName string, ticketID uint, ticketTitle string) {
-	DispatchTicketCreated(requesterEmail, requesterName, ticketID, ticketTitle)
+func NotifyTicketCreated(orgID uint, requesterEmail, requesterName string, ticketID uint, ticketTitle string) {
+	DispatchTicketCreated(orgID, requesterEmail, requesterName, ticketID, ticketTitle)
 }
 
 // NotifyTicketAssigned sends notification when a ticket is assigned.
-func NotifyTicketAssigned(assigneeEmail, assigneeName string, ticketID uint, ticketTitle string) {
-	DispatchTicketAssigned(assigneeEmail, assigneeName, ticketID, ticketTitle)
+func NotifyTicketAssigned(orgID uint, assigneeEmail, assigneeName string, ticketID uint, ticketTitle string) {
+	DispatchTicketAssigned(orgID, assigneeEmail, assigneeName, ticketID, ticketTitle)
 }
 
 // NotifyTicketStatusChanged sends notification when ticket status changes.
-func NotifyTicketStatusChanged(recipientEmail, recipientName string, ticketID uint, ticketTitle, oldStatus, newStatus string) {
-	DispatchTicketStatusChanged(recipientEmail, recipientName, ticketID, ticketTitle, oldStatus, newStatus)
+func NotifyTicketStatusChanged(orgID uint, recipientEmail, recipientName string, ticketID uint, ticketTitle, oldStatus, newStatus string) {
+	DispatchTicketStatusChanged(orgID, recipientEmail, recipientName, ticketID, ticketTitle, oldStatus, newStatus)
 }
 
 // NotifyNewComment sends notification when a public comment is added.
-func NotifyNewComment(recipientEmail, recipientName string, ticketID uint, ticketTitle, commenterName string) {
-	DispatchNewComment(recipientEmail, recipientName, ticketID, ticketTitle, commenterName)
+func NotifyNewComment(orgID uint, recipientEmail, recipientName string, ticketID uint, ticketTitle, commenterName string) {
+	DispatchNewComment(orgID, recipientEmail, recipientName, ticketID, ticketTitle, commenterName)
 }
 
 // buildEmailTemplate creates a clean, branded HTML email.

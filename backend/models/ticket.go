@@ -39,6 +39,15 @@ type Ticket struct {
 	Type        TicketType     `gorm:"type:varchar(30);default:'incident'" json:"type"`
 	Category    string         `gorm:"type:varchar(50);default:'hardware'" json:"category"`
 
+	// Organization / multi-tenant
+	OrganizationID   uint  `gorm:"not null;index;default:1" json:"organization_id"`
+	RoutedToOrgID    *uint `gorm:"index" json:"routed_to_org_id,omitempty"`
+	IsCentralIntake  bool  `gorm:"default:false" json:"is_central_intake"`
+
+	// Site linkage
+	LocationID *uint     `gorm:"index" json:"location_id,omitempty"`
+	Location   *Location `gorm:"foreignKey:LocationID" json:"location,omitempty"`
+
 	// Foreign Keys
 	RequesterID uint  `json:"requester_id"`
 	Requester   User  `gorm:"foreignKey:RequesterID" json:"requester"`

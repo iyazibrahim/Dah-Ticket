@@ -3,11 +3,13 @@ import { ClipboardCheck, Search, Sparkles, X } from 'lucide-react';
 import Modal from '../../ui/Modal';
 import type { Asset, PMFinding } from '../../../types/itam';
 import {
-  DESCRIPTION_TEMPLATES,
+  getDescriptionTemplate,
+  getDescriptionTemplateLabel,
   DEVICE_TYPES,
   FINDING_TYPES,
   type FindingFormState,
 } from './constants';
+import { useLookups } from '../../../hooks/useLookups';
 
 interface Props {
   open: boolean;
@@ -42,6 +44,20 @@ export default function AddFindingModal({
   onPhotosChange,
   onSave,
 }: Props) {
+  const { items: findingTypeItems } = useLookups('finding_type');
+  const { items: deviceTypeItems } = useLookups('device_type');
+  const { items: severityItems } = useLookups('finding_severity');
+  const { items: thresholdItems } = useLookups('finding_threshold');
+
+  const findingTypes = findingTypeItems.length
+    ? findingTypeItems.map((i) => ({ key: i.key, label: i.label }))
+    : [...FINDING_TYPES];
+  const deviceTypes = deviceTypeItems.length
+    ? deviceTypeItems.map((i) => ({ key: i.key, label: i.label, Icon: DEVICE_TYPES.find((d) => d.key === i.key)?.Icon ?? DEVICE_TYPES[DEVICE_TYPES.length - 1].Icon }))
+    : [...DEVICE_TYPES];
+  const severities = severityItems.length ? severityItems : [{ key: 'low', label: 'Low' }, { key: 'medium', label: 'Medium' }, { key: 'high', label: 'High' }, { key: 'critical', label: 'Critical' }];
+  const thresholds = thresholdItems.length ? thresholdItems : [{ key: 'normal', label: 'Normal' }, { key: 'warning', label: 'Warning' }, { key: 'danger', label: 'Danger' }];
+
   // Local query so typed characters always display immediately.
   const [searchQuery, setSearchQuery] = useState('');
   const onSearchRef = useRef(onAssetSearchChange);
@@ -87,7 +103,11 @@ export default function AddFindingModal({
   };
 
   const applyTemplate = () => {
-    const tpl = DESCRIPTION_TEMPLATES[form.finding_type] ?? DESCRIPTION_TEMPLATES.other;
+    const tpl = getDescriptionTemplate(
+      form.finding_type,
+      form.severity,
+      form.threshold_state,
+    );
     onFormChange({
       ...form,
       what_is_wrong: tpl.what_is_wrong,
@@ -95,6 +115,12 @@ export default function AddFindingModal({
       recommended_action: tpl.recommended_action,
     });
   };
+
+  const templateHint = getDescriptionTemplateLabel(
+    form.finding_type,
+    form.severity,
+    form.threshold_state,
+  );
 
   const handleClearAsset = () => {
     setSearchQuery('');
@@ -210,7 +236,7 @@ export default function AddFindingModal({
             className={fieldClass}
           >
             <option value="">Select device type…</option>
-            {DEVICE_TYPES.map(({ key, label }) => (
+            {deviceTypes.map(({ key, label }) => (
               <option key={key} value={label}>
                 {label}
               </option>
@@ -227,7 +253,7 @@ export default function AddFindingModal({
             onChange={(e) => onFormChange({ ...form, finding_type: e.target.value })}
             className={fieldClass}
           >
-            {FINDING_TYPES.map(({ key, label }) => (
+            {findingTypes.map(({ key, label }) => (
               <option key={key} value={key}>
                 {label}
               </option>
@@ -243,10 +269,9 @@ export default function AddFindingModal({
               onChange={(e) => onFormChange({ ...form, severity: e.target.value })}
               className={fieldClass}
             >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
+              {severities.map((s) => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -256,9 +281,9 @@ export default function AddFindingModal({
               onChange={(e) => onFormChange({ ...form, threshold_state: e.target.value })}
               className={fieldClass}
             >
-              <option value="normal">Normal</option>
-              <option value="warning">Warning</option>
-              <option value="danger">Danger</option>
+              {thresholds.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -278,6 +303,9 @@ export default function AddFindingModal({
               Insert template
             </button>
           </div>
+          <p className="text-[10px] text-muted-foreground -mt-1">
+            Template based on {templateHint}
+          </p>
 
           <div>
             <label className="block text-[11px] text-muted-foreground mb-1">What is wrong?</label>

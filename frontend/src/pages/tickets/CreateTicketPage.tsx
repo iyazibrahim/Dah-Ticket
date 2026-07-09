@@ -1,7 +1,9 @@
-import { useState, useMemo, type FormEvent, type ClipboardEvent } from 'react';
+import { useState, useMemo, useEffect, type FormEvent, type ClipboardEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { attachmentAPI, ticketAPI } from '../../services/api';
-import { Loader2, AlertCircle, ImagePlus, X } from 'lucide-react';
+import { kbAPI } from '../../services/kbAPI';
+import { useLookups } from '../../hooks/useLookups';
+import { Loader2, AlertCircle, ImagePlus, X, BookOpen } from 'lucide-react';
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
 
@@ -12,6 +14,25 @@ export default function CreateTicketPage() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [kbSuggestions, setKbSuggestions] = useState<Array<{ id: number; title: string }>>([]);
+  const { items: categories } = useLookups('ticket_category');
+
+  useEffect(() => {
+    const q = form.title.trim();
+    if (q.length < 4) {
+      setKbSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await kbAPI.list({ search: q, per_page: 3 });
+        setKbSuggestions((res.data.articles ?? []).map((a: { id: number; title: string }) => ({ id: a.id, title: a.title })));
+      } catch {
+        setKbSuggestions([]);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [form.title]);
 
   const imageSummary = useMemo(() => {
     const size = imageFiles.reduce((acc, file) => acc + file.size, 0);
@@ -100,6 +121,20 @@ export default function CreateTicketPage() {
               placeholder="Brief summary of the issue"
               className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all text-sm"
             />
+            {kbSuggestions.length > 0 && (
+              <div className="mt-2 rounded-xl border border-border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 mb-2">
+                  <BookOpen className="h-3.5 w-3.5" /> Related knowledge base articles
+                </p>
+                <ul className="space-y-1">
+                  {kbSuggestions.map((a) => (
+                    <li key={a.id}>
+                      <Link to={`/knowledge/${a.id}`} className="text-sm text-primary hover:underline">{a.title}</Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           <div>
@@ -181,11 +216,9 @@ export default function CreateTicketPage() {
                 onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
                 className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
-                <option value="hardware">Hardware</option>
-                <option value="software">Software</option>
-                <option value="network">Network</option>
-                <option value="access">Access & Permissions</option>
-                <option value="other">Other</option>
+                {(categories.length ? categories : [{ key: 'hardware', label: 'Hardware' }]).map((c) => (
+                  <option key={c.key} value={c.key}>{c.label}</option>
+                ))}
               </select>
             </div>
           </div>

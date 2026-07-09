@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import type { HoldReason } from '../../lib/ticketWorkflow';
 import { holdReasonLabels, SLA_PAUSABLE_HOLD_REASONS } from '../../lib/ticketWorkflow';
+import { useLookups } from '../../hooks/useLookups';
 
 interface HoldReasonModalProps {
   open: boolean;
@@ -11,7 +12,14 @@ interface HoldReasonModalProps {
 }
 
 export default function HoldReasonModal({ open, onClose, onConfirm }: HoldReasonModalProps) {
-  const [reason, setReason] = useState<HoldReason>('awaiting_customer');
+  const { items: holdReasons } = useLookups('hold_reason');
+  const reasonOptions = holdReasons.length
+    ? holdReasons.map((r) => ({ value: r.key as HoldReason, label: r.label, pausesSla: Boolean(r.metadata?.pauses_sla) }))
+    : (Object.entries(holdReasonLabels) as [HoldReason, string][]).map(([value, label]) => ({
+        value, label, pausesSla: SLA_PAUSABLE_HOLD_REASONS.includes(value),
+      }));
+
+  const [reason, setReason] = useState<HoldReason>(reasonOptions[0]?.value ?? 'awaiting_customer');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -45,13 +53,13 @@ export default function HoldReasonModal({ open, onClose, onConfirm }: HoldReason
           onChange={(e) => setReason(e.target.value as HoldReason)}
           className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
         >
-          {(Object.entries(holdReasonLabels) as [HoldReason, string][]).map(([value, label]) => (
+          {reasonOptions.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
       </div>
 
-      {SLA_PAUSABLE_HOLD_REASONS.includes(reason) && (
+      {reasonOptions.find((r) => r.value === reason)?.pausesSla && (
         <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
           Resolution SLA clock will pause while this ticket is on hold.
         </p>

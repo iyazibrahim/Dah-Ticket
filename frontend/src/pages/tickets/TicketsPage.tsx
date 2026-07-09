@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { adminAPI, ticketAPI, type TicketFilters } from '../../services/api';
+import { itamAPI } from '../../services/itamAPI';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useLookups } from '../../hooks/useLookups';
 import { useAuth } from '../../contexts/AuthContext';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { canShowListAccept, getListAcceptLabel, getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
@@ -10,6 +12,7 @@ import AssignDropdown from '../../components/AssignDropdown';
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
 import type { Ticket, User } from '../../types';
+import type { Location } from '../../types/itam';
 import { Loader2, Plus, Search, ChevronLeft, ChevronRight, Filter, Ticket as TicketIcon, CheckCircle2 } from 'lucide-react';
 
 const PER_PAGE_OPTIONS = [10, 15, 25] as const;
@@ -35,6 +38,13 @@ export default function TicketsPage() {
   const perms = usePermissions();
   const { user } = useAuth();
   const isStaff = perms.canAcceptTickets;
+  const { items: categories } = useLookups('ticket_category');
+  const [locations, setLocations] = useState<Location[]>([]);
+
+  useEffect(() => {
+    if (!isStaff) return;
+    itamAPI.getLocations().then((res) => setLocations(res.data ?? [])).catch(() => {});
+  }, [isStaff]);
 
   const fetchTickets = useCallback(async () => {
     setIsLoading(true);
@@ -207,7 +217,7 @@ export default function TicketsPage() {
         </div>
 
         {showFilters && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-border">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-border">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Status</label>
               <select value={filters.status || ''} onChange={(e) => handleFilterChange('status', e.target.value)}
@@ -230,6 +240,46 @@ export default function TicketsPage() {
               </select>
             </div>
             <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Type</label>
+              <select value={filters.type || ''} onChange={(e) => handleFilterChange('type', e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm">
+                <option value="">All types</option>
+                <option value="incident">Incident</option>
+                <option value="service_request">Service Request</option>
+                <option value="problem">Problem</option>
+                <option value="change">Change</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Category</label>
+              <select value={filters.category || ''} onChange={(e) => handleFilterChange('category', e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm">
+                <option value="">All categories</option>
+                {categories.map((c) => (
+                  <option key={c.key} value={c.key}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+            {isStaff && locations.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Location</label>
+                <select
+                  value={filters.location_id ?? ''}
+                  onChange={(e) => setFilters((prev) => ({
+                    ...prev,
+                    page: 1,
+                    location_id: e.target.value ? Number(e.target.value) : undefined,
+                  }))}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm"
+                >
+                  <option value="">All locations</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Assignment</label>
               <select value={filters.unassigned ? 'unassigned' : ''} onChange={(e) => {
                 if (e.target.value === 'unassigned') {
@@ -243,6 +293,25 @@ export default function TicketsPage() {
                 <option value="unassigned">Unassigned only</option>
               </select>
             </div>
+            {perms.isFullAdmin && (
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await adminAPI.exportTickets(filters as Record<string, string | number | boolean>);
+                    const url = URL.createObjectURL(res.data);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'tickets_export.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-border text-sm hover:bg-muted"
+                >
+                  Export CSV
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
