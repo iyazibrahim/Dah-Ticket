@@ -273,7 +273,12 @@ export default function DashboardLayout() {
             <div className="flex items-center w-full bg-muted/70 border border-border/60 rounded-xl px-4 py-2.5 shadow-sm focus-within:ring-2 focus-within:ring-primary/25 focus-within:border-primary/30 transition-all">
               <Search className="h-5 w-5 text-muted-foreground mr-3 shrink-0" />
               <input
-                type="text"
+                type="search"
+                name="global-search"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 value={globalSearch}
                 onChange={(e) => {
                   setGlobalSearch(e.target.value);
@@ -468,7 +473,12 @@ export default function DashboardLayout() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 autoFocus
-                type="text"
+                type="search"
+                name="global-search-mobile"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 value={globalSearch}
                 onChange={(e) => setGlobalSearch(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleGlobalEnter(); }}

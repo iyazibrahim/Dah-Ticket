@@ -465,6 +465,8 @@ export default function TicketDetailPage() {
   const overflowActions = availableActions.filter(
     (a) => a.type === 'transition' && a.forceClose,
   );
+  const showRouteToCentral = isStaff && canManage && !ticket?.is_central_intake;
+  const hasOverflowMenu = overflowActions.length > 0 || showRouteToCentral;
 
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -882,7 +884,7 @@ export default function TicketDetailPage() {
                   )}
                 </>
               )}
-              {overflowActions.length > 0 && (
+              {hasOverflowMenu && (
                 <div className="relative">
                   <button
                     type="button"
@@ -902,18 +904,18 @@ export default function TicketDetailPage() {
                           {action.label}
                         </button>
                       ))}
+                      {showRouteToCentral && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowOverflowMenu(false); handleRouteToCentral(); }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-muted transition-colors text-blue-700 dark:text-blue-300"
+                        >
+                          Route to Central Office
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-              {isStaff && canManage && !ticket.is_central_intake && (
-                <button
-                  type="button"
-                  onClick={handleRouteToCentral}
-                  className="w-full py-2 rounded-lg border border-blue-300 text-blue-700 dark:text-blue-300 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                >
-                  Route to Central Office
-                </button>
               )}
             </div>
 
