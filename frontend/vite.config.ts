@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.png', 'apple-touch-icon.png', 'digidesk-logo.png', 'digidesk-logo-icon.png', 'digidesk-logo-on-dark.png', 'digidesk-logo-compact.png'],
+      includeAssets: ['favicon.png', 'apple-touch-icon.png', 'digidesk-logo.png', 'digidesk-logo-icon.png', 'digidesk-maskable.png', 'digidesk-logo-on-dark.png', 'digidesk-logo-compact.png'],
       manifest: false,
       workbox: {
         navigateFallback: '/index.html',
