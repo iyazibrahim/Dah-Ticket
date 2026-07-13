@@ -18,7 +18,7 @@ export default function CreateTicketPage() {
   const { user } = useAuth();
   const { isSiteIntakeStaff } = usePermissions();
 
-  const [form, setForm] = useState({ title: '', description: '', priority: 'low', type: 'incident', category: 'hardware', location_id: '' as string });
+  const [form, setForm] = useState({ title: '', description: '', priority: 'low', type: 'incident', category: 'hardware' });
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,11 +26,6 @@ export default function CreateTicketPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const { items: categories } = useLookups('ticket_category');
   const { items: ticketTypes } = useLookups('ticket_type');
-
-  const siteLocations = useMemo(
-    () => locations.filter((l) => l.location_type !== 'hq'),
-    [locations],
-  );
 
   const userSiteName = useMemo(() => {
     if (!user?.primary_location_id) return null;
@@ -105,9 +100,6 @@ export default function CreateTicketPage() {
         type: form.type,
         category: form.category,
       };
-      if (form.location_id) {
-        payload.location_id = Number(form.location_id);
-      }
       const res = await ticketAPI.create(payload as Parameters<typeof ticketAPI.create>[0]);
       if (imageFiles.length > 0) {
         const uploadResults = await Promise.allSettled(
@@ -153,26 +145,6 @@ export default function CreateTicketPage() {
               <span>
                 Site: <strong>{userSiteName}</strong> — Main Office IT will receive and handle this ticket.
               </span>
-            </div>
-          )}
-
-          {!isSiteIntakeStaff && siteLocations.length > 0 && (
-            <div>
-              <label htmlFor="ticket-location" className="block text-sm font-medium text-foreground mb-1.5">
-                Site (optional)
-              </label>
-              <select
-                id="ticket-location"
-                value={form.location_id}
-                onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">Auto-detect from your profile</option>
-                {siteLocations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground mt-1">Select the site this ticket is for, if applicable.</p>
             </div>
           )}
 
