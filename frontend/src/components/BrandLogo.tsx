@@ -1,31 +1,35 @@
 import { Link } from 'react-router-dom';
-import {
-  BRAND_LOGO_BY_VARIANT,
-  BRAND_LOGO_ON_DARK_SRC,
-  BRAND_LOGO_SRC,
-  BRAND_NAME,
-  type BrandLogoVariant,
-} from '../lib/brand';
+import { BRAND_NAME, type BrandLogoVariant } from '../lib/brand';
+// Imported as a hashed asset so the URL changes on every content change,
+// which defeats any stale browser / service-worker cache.
+import brandIcon from '../assets/digidesk-icon.png';
 
 type BrandLogoSize = 'sm' | 'md' | 'lg' | 'xl';
-
-const sizeClasses: Record<BrandLogoSize, string> = {
-  sm: 'h-7 w-auto max-w-[140px]',
-  md: 'h-9 w-auto max-w-[180px]',
-  lg: 'h-10 w-auto max-w-[200px]',
-  xl: 'h-16 w-auto max-w-[280px]',
-};
 
 const iconSizeClasses: Record<BrandLogoSize, string> = {
   sm: 'h-7 w-7',
   md: 'h-9 w-9',
-  lg: 'h-10 w-10',
+  lg: 'h-11 w-11',
   xl: 'h-16 w-16',
+};
+
+const textSizeClasses: Record<BrandLogoSize, string> = {
+  sm: 'text-lg',
+  md: 'text-xl',
+  lg: 'text-2xl',
+  xl: 'text-4xl',
+};
+
+const gapClasses: Record<BrandLogoSize, string> = {
+  sm: 'gap-1.5',
+  md: 'gap-2',
+  lg: 'gap-2.5',
+  xl: 'gap-3',
 };
 
 interface BrandLogoProps {
   size?: BrandLogoSize;
-  /** Logo asset variant — `default` auto-switches for dark mode */
+  /** Logo rendering variant. `onDark` renders a white wordmark for dark/gradient surfaces. */
   variant?: BrandLogoVariant;
   className?: string;
   /** Wrap in a home link when provided. */
@@ -38,44 +42,40 @@ export default function BrandLogo({
   className = '',
   to,
 }: BrandLogoProps) {
-  const isIcon = variant === 'icon';
-  const sizeClass = isIcon ? iconSizeClasses[size] : sizeClasses[size];
-  const wrapperClass = `inline-flex min-w-0 max-w-full items-center leading-none ${className}`;
+  const isOnDark = variant === 'onDark';
+  const isIconOnly = variant === 'icon';
+  const wrapperClass = `inline-flex min-w-0 max-w-full items-center leading-none ${gapClasses[size]} ${className}`;
 
-  const imageClass = `block shrink-0 object-contain object-left ${sizeClass}`;
-
-  const image =
-    variant === 'default' ? (
-      <>
-        <img
-          src={BRAND_LOGO_SRC}
-          alt={BRAND_NAME}
-          className={`${imageClass} dark:hidden`}
-          decoding="async"
-        />
-        <img
-          src={BRAND_LOGO_ON_DARK_SRC}
-          alt={BRAND_NAME}
-          className={`${imageClass} hidden dark:block`}
-          decoding="async"
-        />
-      </>
-    ) : (
+  const content = (
+    <>
       <img
-        src={BRAND_LOGO_BY_VARIANT[variant]}
+        src={brandIcon}
         alt={BRAND_NAME}
-        className={imageClass}
+        className={`block shrink-0 object-contain ${iconSizeClasses[size]}`}
         decoding="async"
       />
-    );
+      {!isIconOnly && (
+        <span
+          className={`font-extrabold tracking-tight leading-none truncate ${textSizeClasses[size]}`}
+        >
+          <span className={isOnDark ? 'text-white' : 'text-slate-800 dark:text-white'}>Digi</span>
+          <span className={isOnDark ? 'text-white' : 'text-sky-500'}>Desk</span>
+        </span>
+      )}
+    </>
+  );
 
   if (to) {
     return (
-      <Link to={to} className={wrapperClass}>
-        {image}
+      <Link to={to} className={wrapperClass} aria-label={BRAND_NAME}>
+        {content}
       </Link>
     );
   }
 
-  return <span className={wrapperClass}>{image}</span>;
+  return (
+    <span className={wrapperClass} aria-label={BRAND_NAME}>
+      {content}
+    </span>
+  );
 }
