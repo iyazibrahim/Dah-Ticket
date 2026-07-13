@@ -38,7 +38,6 @@ export default function TicketsPage() {
     page: 1,
     per_page: perPage,
     search: initialSearch || undefined,
-    ...(!perms.isSiteIntakeStaff && perms.canAcceptTickets ? { unassigned: true } : {}),
   }));
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [showFilters, setShowFilters] = useState(false);
