@@ -90,7 +90,7 @@ func main() {
 		api.GET("/health", func(c *gin.Context) {
 			c.JSON(200, gin.H{
 				"status":  "success",
-				"message": "DahTicket Backend is running",
+				"message": config.ProductName + " Backend is running",
 			})
 		})
 
@@ -130,7 +130,6 @@ func main() {
 			tickets.PUT("/:id", handlers.UpdateTicket)
 			tickets.POST("/:id/accept", handlers.AcceptTicket)
 			tickets.POST("/:id/escalate", handlers.EscalateTicket)
-			tickets.POST("/:id/route-to-central", handlers.RouteTicketToCentral)
 			tickets.DELETE("/:id", handlers.DeleteTicket)
 
 			// Comment routes (nested under tickets)

@@ -6,6 +6,8 @@ import (
 	"net/smtp"
 	"os"
 	"strings"
+
+	"dahticket-backend/config"
 )
 
 // EmailConfig holds SMTP configuration.
@@ -35,11 +37,11 @@ func RefreshEmailConfig() {
 			fromName = strings.TrimSpace(settings.EmailSenderName)
 		}
 		if fromName == "" {
-			fromName = "DahTicket IT Support"
+			fromName = config.ProductSupportName
 		}
 		fromAddr := strings.TrimSpace(settings.SMTPFromAddr)
 		if fromAddr == "" {
-			fromAddr = getEnvDefault("SMTP_FROM_ADDR", "noreply@dahticket.com")
+			fromAddr = getEnvDefault("SMTP_FROM_ADDR", config.ProductFromEmail)
 		}
 		port := strings.TrimSpace(settings.SMTPPort)
 		if port == "" {
@@ -63,8 +65,8 @@ func RefreshEmailConfig() {
 		Port:     getEnvDefault("SMTP_PORT", "587"),
 		Username: os.Getenv("SMTP_USERNAME"),
 		Password: os.Getenv("SMTP_PASSWORD"),
-		FromName: getEnvDefault("SMTP_FROM_NAME", "DahTicket IT Support"),
-		FromAddr: getEnvDefault("SMTP_FROM_ADDR", "noreply@dahticket.com"),
+		FromName: getEnvDefault("SMTP_FROM_NAME", config.ProductSupportName),
+		FromAddr: getEnvDefault("SMTP_FROM_ADDR", config.ProductFromEmail),
 		Enabled:  os.Getenv("SMTP_HOST") != "",
 	}
 	if emailConfig.Enabled {
@@ -156,6 +158,11 @@ func NotifyNewComment(orgID uint, recipientEmail, recipientName string, ticketID
 	DispatchNewComment(orgID, recipientEmail, recipientName, ticketID, ticketTitle, commenterName)
 }
 
+// NotifyHQSiteTicketCreated alerts Main Office IT about a new site ticket.
+func NotifyHQSiteTicketCreated(orgID uint, ticketID uint, ticketTitle, siteName, requesterName string) {
+	DispatchHQSiteTicketCreated(orgID, ticketID, ticketTitle, siteName, requesterName)
+}
+
 // buildEmailTemplate creates a clean, branded HTML email.
 func buildEmailTemplate(heading, greeting, mainText, details, footer string) string {
 	footerHTML := ""
@@ -189,7 +196,7 @@ func buildEmailTemplate(heading, greeting, mainText, details, footer string) str
 			</div>
 			<div style="padding: 16px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
 				<p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
-					DahTicket IT Support · This is an automated notification
+					`+config.ProductSupportName+` · This is an automated notification
 				</p>
 			</div>
 		</div>
@@ -210,7 +217,7 @@ func BuildTestEmailBody() string {
 	return buildEmailTemplate(
 		"Test Email",
 		"Hi Admin,",
-		"This is a test message from DahTicket notification settings.",
+		fmt.Sprintf("This is a test message from %s notification settings.", config.ProductName),
 		"<strong>Status:</strong> SMTP configuration is working.",
 		"You can safely ignore this email.",
 	)

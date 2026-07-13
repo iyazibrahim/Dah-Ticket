@@ -1,4 +1,4 @@
-# 🔒 Security Guidelines for DahTicket V2
+# 🔒 Security Guidelines for DigiDesk
 
 ## Critical: Never Commit These Files
 

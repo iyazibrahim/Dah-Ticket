@@ -2,20 +2,44 @@ import { useState, useMemo, useEffect, type FormEvent, type ClipboardEvent } fro
 import { useNavigate, Link } from 'react-router-dom';
 import { attachmentAPI, ticketAPI } from '../../services/api';
 import { kbAPI } from '../../services/kbAPI';
+import { itamAPI } from '../../services/itamAPI';
 import { useLookups } from '../../hooks/useLookups';
-import { Loader2, AlertCircle, ImagePlus, X, BookOpen } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
+import { Loader2, AlertCircle, ImagePlus, X, BookOpen, MapPin } from 'lucide-react';
 import PageHeader from '../../components/PageHeader';
 import PageContainer from '../../components/PageContainer';
+import LookupSelect from '../../components/ui/LookupSelect';
+import { priorityLabels, priorityDescriptions } from '../../lib/ticketWorkflow';
+import type { Location } from '../../types/itam';
 
 export default function CreateTicketPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { isSiteIntakeStaff } = usePermissions();
 
-  const [form, setForm] = useState({ title: '', description: '', priority: 'low', type: 'incident', category: 'hardware' });
+  const [form, setForm] = useState({ title: '', description: '', priority: 'low', type: 'incident', category: 'hardware', location_id: '' as string });
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [kbSuggestions, setKbSuggestions] = useState<Array<{ id: number; title: string }>>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const { items: categories } = useLookups('ticket_category');
+  const { items: ticketTypes } = useLookups('ticket_type');
+
+  const siteLocations = useMemo(
+    () => locations.filter((l) => l.location_type !== 'hq'),
+    [locations],
+  );
+
+  const userSiteName = useMemo(() => {
+    if (!user?.primary_location_id) return null;
+    return locations.find((l) => l.id === user.primary_location_id)?.name ?? null;
+  }, [user, locations]);
+
+  useEffect(() => {
+    itamAPI.getLocations().then((res) => setLocations(res.data ?? [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const q = form.title.trim();
@@ -74,7 +98,17 @@ export default function CreateTicketPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await ticketAPI.create(form);
+      const payload: Record<string, unknown> = {
+        title: form.title,
+        description: form.description,
+        priority: form.priority,
+        type: form.type,
+        category: form.category,
+      };
+      if (form.location_id) {
+        payload.location_id = Number(form.location_id);
+      }
+      const res = await ticketAPI.create(payload as Parameters<typeof ticketAPI.create>[0]);
       if (imageFiles.length > 0) {
         const uploadResults = await Promise.allSettled(
           imageFiles.map((file) => attachmentAPI.upload(res.data.ticket.id, file))
@@ -97,7 +131,9 @@ export default function CreateTicketPage() {
     <PageContainer spacing="comfortable" className="max-w-3xl">
       <PageHeader
         title="Create New Ticket"
-        subtitle="Describe your issue and we'll get it resolved."
+        subtitle={isSiteIntakeStaff
+          ? 'Describe the issue — this ticket is sent to the Main Office IT team automatically.'
+          : "Describe your issue and we'll get it resolved."}
         backTo="/tickets"
         backLabel="Tickets"
       />
@@ -111,6 +147,35 @@ export default function CreateTicketPage() {
         )}
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {(isSiteIntakeStaff && userSiteName) && (
+            <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+              <MapPin className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                Site: <strong>{userSiteName}</strong> — Main Office IT will receive and handle this ticket.
+              </span>
+            </div>
+          )}
+
+          {!isSiteIntakeStaff && siteLocations.length > 0 && (
+            <div>
+              <label htmlFor="ticket-location" className="block text-sm font-medium text-foreground mb-1.5">
+                Site (optional)
+              </label>
+              <select
+                id="ticket-location"
+                value={form.location_id}
+                onChange={(e) => setForm((f) => ({ ...f, location_id: e.target.value }))}
+                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="">Auto-detect from your profile</option>
+                {siteLocations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">Select the site this ticket is for, if applicable.</p>
+            </div>
+          )}
+
           <div>
             <label htmlFor="ticket-title" className="block text-sm font-medium text-foreground mb-1.5">
               Title <span className="text-red-500">*</span>
@@ -191,36 +256,28 @@ export default function CreateTicketPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
-              <label htmlFor="ticket-type" className="block text-sm font-medium text-foreground mb-1.5">
-                Ticket Type
-              </label>
-              <select
-                id="ticket-type" value={form.type}
-                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="incident">Incident</option>
-                <option value="service_request">Service Request</option>
-                <option value="problem">Problem</option>
-                <option value="change">Change</option>
-              </select>
-            </div>
+            <LookupSelect
+              id="ticket-type"
+              label="Ticket Type"
+              value={form.type}
+              onChange={(type) => setForm((f) => ({ ...f, type }))}
+              items={ticketTypes}
+              fallback={[
+                { key: 'incident', label: 'Incident', description: 'Something is broken or not working right now.' },
+                { key: 'service_request', label: 'Service Request', description: 'You need access, equipment, or a standard IT service.' },
+                { key: 'problem', label: 'Problem', description: 'A recurring issue affecting multiple people.' },
+                { key: 'change', label: 'Change', description: 'A planned change to systems or configuration.' },
+              ]}
+            />
 
-            <div>
-              <label htmlFor="ticket-category" className="block text-sm font-medium text-foreground mb-1.5">
-                Category
-              </label>
-              <select
-                id="ticket-category" value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
-                {(categories.length ? categories : [{ key: 'hardware', label: 'Hardware' }]).map((c) => (
-                  <option key={c.key} value={c.key}>{c.label}</option>
-                ))}
-              </select>
-            </div>
+            <LookupSelect
+              id="ticket-category"
+              label="Category"
+              value={form.category}
+              onChange={(category) => setForm((f) => ({ ...f, category }))}
+              items={categories}
+              fallback={[{ key: 'hardware', label: 'Hardware', description: 'Computers, printers, and physical equipment.' }]}
+            />
           </div>
 
           <div>
@@ -232,11 +289,13 @@ export default function CreateTicketPage() {
               onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
               className="w-full px-4 py-2.5 rounded-xl border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-              <option value="critical">Critical</option>
+              {(Object.keys(priorityLabels) as Array<keyof typeof priorityLabels>).map((key) => (
+                <option key={key} value={key}>{priorityLabels[key]}</option>
+              ))}
             </select>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              {priorityDescriptions[form.priority as keyof typeof priorityDescriptions]}
+            </p>
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

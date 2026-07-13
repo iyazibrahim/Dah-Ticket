@@ -45,6 +45,7 @@ type UpdateITAMSettingsRequest struct {
 	SupportEmail     *string `json:"support_email"`
 	Timezone         *string `json:"timezone"`
 	NotifyTicketCreated  *bool   `json:"notify_ticket_created"`
+	NotifyHQOnSiteTicket *bool   `json:"notify_hq_on_site_ticket"`
 	NotifyTicketAssigned *bool   `json:"notify_ticket_assigned"`
 	NotifyTicketStatus   *bool   `json:"notify_ticket_status"`
 	NotifyNewComment     *bool   `json:"notify_new_comment"`
@@ -246,7 +247,7 @@ func TestEmailSettings(c *gin.Context) {
 	}
 	services.InvalidateSettingsCache()
 	body := services.BuildTestEmailBody()
-	if err := services.SendEmailSync(req.To, "DahTicket Test Email", body); err != nil {
+	if err := services.SendEmailSync(req.To, config.ProductName+" Test Email", body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -345,6 +346,9 @@ func UpdateITAMSettings(c *gin.Context) {
 	}
 	if req.NotifyTicketCreated != nil {
 		settings.NotifyTicketCreated = *req.NotifyTicketCreated
+	}
+	if req.NotifyHQOnSiteTicket != nil {
+		settings.NotifyHQOnSiteTicket = *req.NotifyHQOnSiteTicket
 	}
 	if req.NotifyTicketAssigned != nil {
 		settings.NotifyTicketAssigned = *req.NotifyTicketAssigned

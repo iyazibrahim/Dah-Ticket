@@ -67,8 +67,9 @@ export function canShowListAccept(
   ticket: { status: string; assignee_id?: number; assignment_accepted?: boolean; is_escalated?: boolean },
   userId?: number,
   canAssignAnyone?: boolean,
+  isSiteIntakeStaff?: boolean,
 ): boolean {
-  if (!userId) return false;
+  if (!userId || isSiteIntakeStaff) return false;
 
   if (ticket.status === 'open') {
     if (!ticket.assignee_id) return true;

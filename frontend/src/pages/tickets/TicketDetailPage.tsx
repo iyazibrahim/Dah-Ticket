@@ -28,15 +28,15 @@ import {
   type ClosureCode,
   type TicketAction,
 } from '../../lib/ticketWorkflow';
-import { getActionButtonClasses, canShowListAccept, getListAcceptLabel } from '../../lib/statusBadges';
+import { useLookups } from '../../hooks/useLookups';
 import StatusBadge from '../../components/ui/StatusBadge';
 import { formatInTimezone } from '../../lib/formatDate';
-import { getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
+import { getActionButtonClasses, canShowListAccept, getListAcceptLabel, getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const { isStaff, canAssignAnyone } = usePermissions();
+  const { isStaff, canAssignAnyone, isSiteIntakeStaff } = usePermissions();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
@@ -67,13 +67,15 @@ export default function TicketDetailPage() {
   const [linkingAsset, setLinkingAsset] = useState(false);
   const [unlinkingAssetId, setUnlinkingAssetId] = useState<number | null>(null);
   const assetSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { items: ticketTypes } = useLookups('ticket_type');
+  const { items: ticketCategories } = useLookups('ticket_category');
 
   const isRequester = ticket?.requester?.id === user?.id;
   const isAssignee = ticket?.assignee?.id === user?.id;
   const canManage = ticket
-    ? canManageTicketWorkflow(ticket, user?.id, canAssignAnyone)
+    ? canManageTicketWorkflow(ticket, user?.id, canAssignAnyone, isSiteIntakeStaff)
     : false;
-  const viewOnlyManager = isStaff && canAssignAnyone && ticket?.assignee_id && !isAssignee && !ticket?.is_escalated;
+  const viewOnlyManager = isStaff && canAssignAnyone && !isSiteIntakeStaff && ticket?.assignee_id && !isAssignee && !ticket?.is_escalated;
 
   const pendingCommentPreviewUrls = useMemo(
     () => pendingCommentFiles.map((file) => URL.createObjectURL(file)),
@@ -319,18 +321,6 @@ export default function TicketDetailPage() {
     }
   };
 
-  const handleRouteToCentral = async () => {
-    if (!ticket) return;
-    if (!confirm('Route this ticket to central office for HQ handling?')) return;
-    try {
-      const res = await ticketAPI.routeToCentral(ticket.id);
-      setTicket(res.data.ticket);
-    } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { error?: string } } };
-      alert(axiosErr.response?.data?.error || 'Failed to route ticket');
-    }
-  };
-
   const handleAction = async (action: TicketAction) => {
     if (action.type === 'hold') {
       setShowHoldModal(true);
@@ -345,7 +335,7 @@ export default function TicketDetailPage() {
       return;
     }
     if (action.type === 'escalate') {
-      if (confirm('Escalate this ticket? Priority will increase and managers will be able to take over.')) {
+      if (confirm('Escalate to manager? Priority will increase and managers can take over this ticket.')) {
         await handleEscalate();
       }
       return;
@@ -455,6 +445,7 @@ export default function TicketDetailPage() {
         isRequester: !!isRequester,
         isAssignee: !!isAssignee,
         canAssignAnyone,
+        isSiteIntakeStaff,
         userId: user?.id,
       })
     : [];
@@ -465,8 +456,7 @@ export default function TicketDetailPage() {
   const overflowActions = availableActions.filter(
     (a) => a.type === 'transition' && a.forceClose,
   );
-  const showRouteToCentral = isStaff && canManage && !ticket?.is_central_intake;
-  const hasOverflowMenu = overflowActions.length > 0 || showRouteToCentral;
+  const hasOverflowMenu = overflowActions.length > 0;
 
   const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -514,6 +504,15 @@ export default function TicketDetailPage() {
         onConfirm={handleCloseConfirm}
       />
 
+      {isSiteIntakeStaff && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            You can track this ticket and add updates. Main Office IT will handle assignment and resolution.
+          </span>
+        </div>
+      )}
+
       {viewOnlyManager && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -547,11 +546,6 @@ export default function TicketDetailPage() {
               {ticket.status === 'on_hold' && ticket.hold_reason && (
                 <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                   {holdReasonLabels[ticket.hold_reason]}
-                </span>
-              )}
-              {ticket.is_central_intake && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                  Central Intake
                 </span>
               )}
               {ticket.location && (
@@ -671,7 +665,9 @@ export default function TicketDetailPage() {
             {activeTab === 'comments' ? (
               <div className="flex flex-col">
                 <div className="bg-muted/10 px-4 py-3 text-xs text-muted-foreground text-center border-b border-border">
-                  {isStaff
+                  {isSiteIntakeStaff
+                    ? 'Add updates visible to the requester and Main Office IT.'
+                    : isStaff
                     ? 'Choose "Note to User" for replies visible to the requester, or "Internal Note" for IT-only notes.'
                     : 'Your comments are visible to IT staff working on this ticket.'}
                 </div>
@@ -718,7 +714,7 @@ export default function TicketDetailPage() {
 
                 {/* Add comment form */}
                 <form onSubmit={handleAddComment} className="p-4 border-t border-border bg-muted/20">
-                  {isStaff && (
+                  {isStaff && !isSiteIntakeStaff && (
                     <div className="flex rounded-lg border border-border overflow-hidden mb-3 w-fit">
                       <button
                         type="button"
@@ -904,15 +900,6 @@ export default function TicketDetailPage() {
                           {action.label}
                         </button>
                       ))}
-                      {showRouteToCentral && (
-                        <button
-                          type="button"
-                          onClick={() => { setShowOverflowMenu(false); handleRouteToCentral(); }}
-                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-muted transition-colors text-blue-700 dark:text-blue-300"
-                        >
-                          Route to Central Office
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>
@@ -925,21 +912,29 @@ export default function TicketDetailPage() {
                   <label className="block text-xs text-muted-foreground mb-1">Ticket Type</label>
                   <select value={ticket.type} onChange={(e) => handleTypeChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
-                    <option value="incident">Incident</option>
-                    <option value="service_request">Service Request</option>
-                    <option value="problem">Problem</option>
-                    <option value="change">Change</option>
+                    {(ticketTypes.length ? ticketTypes : [
+                      { key: 'incident', label: 'Incident' },
+                      { key: 'service_request', label: 'Service Request' },
+                      { key: 'problem', label: 'Problem' },
+                      { key: 'change', label: 'Change' },
+                    ]).map((t) => (
+                      <option key={t.key} value={t.key}>{t.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-muted-foreground mb-1">Category</label>
                   <select value={ticket.category} onChange={(e) => handleCategoryChange(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
-                    <option value="hardware">Hardware</option>
-                    <option value="software">Software</option>
-                    <option value="network">Network</option>
-                    <option value="access">Access & Permissions</option>
-                    <option value="other">Other</option>
+                    {(ticketCategories.length ? ticketCategories : [
+                      { key: 'hardware', label: 'Hardware' },
+                      { key: 'software', label: 'Software' },
+                      { key: 'network', label: 'Network' },
+                      { key: 'access', label: 'Access / Account' },
+                      { key: 'other', label: 'Other' },
+                    ]).map((c) => (
+                      <option key={c.key} value={c.key}>{c.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div>

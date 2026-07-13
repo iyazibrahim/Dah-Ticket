@@ -1,4 +1,4 @@
-import { TICKET_STATUSES, statusLabels, getStatusStepIndex } from '../../lib/ticketWorkflow';
+import { TICKET_STATUSES, statusLabels, statusDescriptions, getStatusStepIndex } from '../../lib/ticketWorkflow';
 import type { Ticket } from '../../types';
 
 interface StatusStepperProps {
@@ -51,6 +51,9 @@ export default function StatusStepper({ status }: StatusStepperProps) {
           );
         })}
       </div>
+      <p className="mt-3 text-xs text-muted-foreground text-center">
+        {statusDescriptions[status]}
+      </p>
     </div>
   );
 }

@@ -14,12 +14,18 @@ interface HoldReasonModalProps {
 export default function HoldReasonModal({ open, onClose, onConfirm }: HoldReasonModalProps) {
   const { items: holdReasons } = useLookups('hold_reason');
   const reasonOptions = holdReasons.length
-    ? holdReasons.map((r) => ({ value: r.key as HoldReason, label: r.label, pausesSla: Boolean(r.metadata?.pauses_sla) }))
+    ? holdReasons.map((r) => ({
+        value: r.key as HoldReason,
+        label: r.label,
+        description: typeof r.metadata?.description === 'string' ? r.metadata.description : '',
+        pausesSla: Boolean(r.metadata?.pauses_sla),
+      }))
     : (Object.entries(holdReasonLabels) as [HoldReason, string][]).map(([value, label]) => ({
-        value, label, pausesSla: SLA_PAUSABLE_HOLD_REASONS.includes(value),
+        value, label, description: '', pausesSla: SLA_PAUSABLE_HOLD_REASONS.includes(value),
       }));
 
   const [reason, setReason] = useState<HoldReason>(reasonOptions[0]?.value ?? 'awaiting_customer');
+  const selected = reasonOptions.find((r) => r.value === reason);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -43,11 +49,11 @@ export default function HoldReasonModal({ open, onClose, onConfirm }: HoldReason
 
   return (
     <Modal open={open} onClose={onClose}>
-      <h3 className="text-lg font-semibold text-foreground">Put Ticket On Hold</h3>
+      <h3 className="text-lg font-semibold text-foreground">Pause Ticket</h3>
       <p className="text-sm text-muted-foreground">Select a reason so the requester and team know what is pending.</p>
 
       <div>
-        <label className="block text-xs text-muted-foreground mb-1">Hold Reason</label>
+        <label className="block text-xs text-muted-foreground mb-1">Why is this paused?</label>
         <select
           value={reason}
           onChange={(e) => setReason(e.target.value as HoldReason)}
@@ -57,9 +63,12 @@ export default function HoldReasonModal({ open, onClose, onConfirm }: HoldReason
             <option key={value} value={value}>{label}</option>
           ))}
         </select>
+        {selected?.description && (
+          <p className="text-xs text-muted-foreground mt-1">{selected.description}</p>
+        )}
       </div>
 
-      {reasonOptions.find((r) => r.value === reason)?.pausesSla && (
+      {selected?.pausesSla && (
         <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
           Resolution SLA clock will pause while this ticket is on hold.
         </p>

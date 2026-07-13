@@ -25,19 +25,25 @@ export default function TicketsPage() {
     ? initialPerPage
     : 15;
 
+  const perms = usePermissions();
+  const { user } = useAuth();
+  const isStaff = perms.canAcceptTickets;
+
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [agents, setAgents] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<TicketFilters>({ page: 1, per_page: perPage, search: initialSearch || undefined });
+  const [filters, setFilters] = useState<TicketFilters>(() => ({
+    page: 1,
+    per_page: perPage,
+    search: initialSearch || undefined,
+    ...(!perms.isSiteIntakeStaff && perms.canAcceptTickets ? { unassigned: true } : {}),
+  }));
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [showFilters, setShowFilters] = useState(false);
   const [quickActionLoading, setQuickActionLoading] = useState<number | null>(null);
 
-  const perms = usePermissions();
-  const { user } = useAuth();
-  const isStaff = perms.canAcceptTickets;
   const { items: categories } = useLookups('ticket_category');
   const [locations, setLocations] = useState<Location[]>([]);
 
@@ -104,7 +110,7 @@ export default function TicketsPage() {
 
   const canShowAssign = (ticket: Ticket) => {
     if (!perms.canAssignITAgents) return false;
-    if (!canManageTicketWorkflow(ticket, user?.id, perms.canAssignAnyone)) return false;
+    if (!canManageTicketWorkflow(ticket, user?.id, perms.canAssignAnyone, perms.isSiteIntakeStaff)) return false;
     return !ticket.assignee_id && (ticket.status === 'open' || ticket.status === 'on_hold');
   };
 
@@ -156,7 +162,7 @@ export default function TicketsPage() {
 
     return (
       <div className="flex max-w-full items-center gap-1.5" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-        {canShowListAccept(ticket, user?.id, perms.canAssignAnyone) && (
+        {canShowListAccept(ticket, user?.id, perms.canAssignAnyone, perms.isSiteIntakeStaff) && (
           <button
             type="button"
             disabled={quickActionLoading === ticket.id}

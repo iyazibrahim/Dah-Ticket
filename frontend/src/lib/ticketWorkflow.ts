@@ -57,6 +57,28 @@ export const closureCodeLabels: Record<ClosureCode, string> = {
 
 export const SLA_PAUSABLE_HOLD_REASONS: HoldReason[] = ['awaiting_customer', 'awaiting_vendor'];
 
+export const statusDescriptions: Record<TicketStatus, string> = {
+  open: 'Submitted and waiting for IT to pick up.',
+  in_progress: 'IT is actively working on this ticket.',
+  on_hold: 'Paused while waiting on someone or something.',
+  resolved: 'IT marked this as fixed — waiting for confirmation.',
+  closed: 'This ticket is complete.',
+};
+
+export const priorityLabels: Record<Ticket['priority'], string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  critical: 'Critical',
+};
+
+export const priorityDescriptions: Record<Ticket['priority'], string> = {
+  low: 'Minor issue — workaround available, no urgency.',
+  medium: 'Normal issue affecting work but service continues.',
+  high: 'Major impact — key work is blocked.',
+  critical: 'Outage or security risk — needs immediate attention.',
+};
+
 export const priorityColors: Record<Ticket['priority'], string> = {
   low: 'text-muted-foreground',
   medium: 'text-amber-500',
@@ -76,6 +98,7 @@ export interface ActionContext {
   isRequester: boolean;
   isAssignee: boolean;
   canAssignAnyone: boolean;
+  isSiteIntakeStaff?: boolean;
   userId?: number;
 }
 
@@ -83,7 +106,9 @@ export function canManageTicketWorkflow(
   ticket: Pick<Ticket, 'assignee_id' | 'is_escalated'>,
   userId: number | undefined,
   canAssignAnyone: boolean,
+  isSiteIntakeStaff = false,
 ): boolean {
+  if (isSiteIntakeStaff) return false;
   if (!userId) return false;
   if (ticket.assignee_id === userId) return true;
   if (canAssignAnyone) {
@@ -104,7 +129,7 @@ export function getStatusStepIndex(status: TicketStatus): number {
 export function getAvailableActions(ticket: Ticket, ctx: ActionContext): TicketAction[] {
   const actions: TicketAction[] = [];
   const { status } = ticket;
-  const userCanManage = canManageTicketWorkflow(ticket, ctx.userId, ctx.canAssignAnyone);
+  const userCanManage = canManageTicketWorkflow(ticket, ctx.userId, ctx.canAssignAnyone, ctx.isSiteIntakeStaff);
 
   if (ctx.isStaff) {
     switch (status) {
@@ -112,30 +137,30 @@ export function getAvailableActions(ticket: Ticket, ctx: ActionContext): TicketA
         if (userCanManage) {
           const pendingAccept = isPendingAssignment(ticket) && ctx.isAssignee;
           if (!pendingAccept && (ticket.assignment_accepted || !ticket.assignee_id)) {
-            actions.push({ type: 'transition', status: 'in_progress', label: 'Start Progress', variant: 'primary' });
+            actions.push({ type: 'transition', status: 'in_progress', label: 'Start Working', variant: 'primary' });
           }
-          actions.push({ type: 'transition', status: 'closed', label: 'Close Without Resolve', variant: 'muted', forceClose: true });
+          actions.push({ type: 'transition', status: 'closed', label: 'Close Without Fixing', variant: 'muted', forceClose: true });
         }
         break;
       case 'in_progress':
         if (userCanManage) {
-          actions.push({ type: 'hold', label: 'Put On Hold', variant: 'secondary' });
-          actions.push({ type: 'resolve', label: 'Mark Resolved', variant: 'primary' });
+          actions.push({ type: 'hold', label: 'Pause Ticket', variant: 'secondary' });
+          actions.push({ type: 'resolve', label: 'Mark as Fixed', variant: 'primary' });
           if (!ticket.is_escalated && ctx.isAssignee) {
-            actions.push({ type: 'escalate', label: 'Escalate', variant: 'secondary' });
+            actions.push({ type: 'escalate', label: 'Escalate to Manager', variant: 'secondary' });
           }
-          actions.push({ type: 'transition', status: 'closed', label: 'Close Without Resolve', variant: 'muted', forceClose: true });
+          actions.push({ type: 'transition', status: 'closed', label: 'Close Without Fixing', variant: 'muted', forceClose: true });
         }
         break;
       case 'on_hold':
         if (userCanManage) {
-          actions.push({ type: 'transition', status: 'in_progress', label: 'Resume Progress', variant: 'primary' });
+          actions.push({ type: 'transition', status: 'in_progress', label: 'Resume Working', variant: 'primary' });
         }
         break;
       case 'resolved':
         if (ctx.isRequester) {
-          actions.push({ type: 'transition', status: 'closed', label: 'Accept & Close', variant: 'primary' });
-          actions.push({ type: 'transition', status: 'in_progress', label: 'Not Fixed (Reopen)', variant: 'danger' });
+          actions.push({ type: 'transition', status: 'closed', label: 'Confirm Fixed & Close', variant: 'primary' });
+          actions.push({ type: 'transition', status: 'in_progress', label: 'Still Not Fixed — Reopen', variant: 'danger' });
         } else if (userCanManage) {
           actions.push({ type: 'close', label: 'Close Ticket', variant: 'primary' });
           actions.push({ type: 'transition', status: 'in_progress', label: 'Reopen Ticket', variant: 'secondary' });

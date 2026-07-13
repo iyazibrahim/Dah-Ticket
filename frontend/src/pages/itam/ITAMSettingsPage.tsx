@@ -106,6 +106,7 @@ export default function ITAMSettingsPage() {
     timezone: 'Asia/Kuala_Lumpur',
     email_sender_name: '',
     notify_ticket_created: true,
+    notify_hq_on_site_ticket: true,
     notify_ticket_assigned: true,
     notify_ticket_status: true,
     notify_new_comment: true,
@@ -234,6 +235,7 @@ export default function ITAMSettingsPage() {
         timezone: loadedSettings.timezone ?? 'Asia/Kuala_Lumpur',
         email_sender_name: loadedSettings.email_sender_name ?? '',
         notify_ticket_created: loadedSettings.notify_ticket_created ?? true,
+        notify_hq_on_site_ticket: loadedSettings.notify_hq_on_site_ticket ?? true,
         notify_ticket_assigned: loadedSettings.notify_ticket_assigned ?? true,
         notify_ticket_status: loadedSettings.notify_ticket_status ?? true,
         notify_new_comment: loadedSettings.notify_new_comment ?? true,
@@ -332,6 +334,7 @@ export default function ITAMSettingsPage() {
     try {
       const res = await itamAPI.updateSettings({
         notify_ticket_created: settingsForm.notify_ticket_created,
+        notify_hq_on_site_ticket: settingsForm.notify_hq_on_site_ticket,
         notify_ticket_assigned: settingsForm.notify_ticket_assigned,
         notify_ticket_status: settingsForm.notify_ticket_status,
         notify_new_comment: settingsForm.notify_new_comment,
@@ -791,6 +794,7 @@ export default function ITAMSettingsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             {([
               ['notify_ticket_created', 'Ticket created'],
+              ['notify_hq_on_site_ticket', 'Notify HQ on site tickets'],
               ['notify_ticket_assigned', 'Ticket assigned'],
               ['notify_ticket_status', 'Status changes'],
               ['notify_new_comment', 'New comments'],
@@ -983,7 +987,7 @@ export default function ITAMSettingsPage() {
         <div className="bg-card border border-border rounded-xl p-4">
           <h3 className="font-semibold text-foreground mb-2">Ticket Configuration</h3>
           <p className="text-sm text-muted-foreground mb-4">Manage categories, hold reasons, resolution and closure codes.</p>
-          <LookupSettingsPanel groups={['ticket_category', 'hold_reason', 'resolution_code', 'closure_code']} />
+          <LookupSettingsPanel groups={['ticket_type', 'ticket_category', 'hold_reason', 'resolution_code', 'closure_code']} />
         </div>
       )}
 

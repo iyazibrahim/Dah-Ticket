@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearAuthStorage, getAuthToken } from '../lib/storage';
 import type { Ticket, Comment } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -12,7 +13,7 @@ const api = axios.create({
 
 // Attach JWT token to every request if available
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('dahticket_token');
+  const token = getAuthToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -24,8 +25,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('dahticket_token');
-      localStorage.removeItem('dahticket_user');
+      clearAuthStorage();
       if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
         window.location.href = '/login';
       }
@@ -60,7 +60,6 @@ export interface TicketFilters {
   type?: string;
   category?: string;
   location_id?: number;
-  central_intake?: boolean;
   assignee_id?: number;
   unassigned?: boolean;
   search?: string;
@@ -102,9 +101,6 @@ export const ticketAPI = {
 
   escalate: (id: number) =>
     api.post<{ ticket: Ticket }>(`/tickets/${id}/escalate`),
-
-  routeToCentral: (id: number) =>
-    api.post<{ ticket: Ticket }>(`/tickets/${id}/route-to-central`),
 
   delete: (id: number) =>
     api.delete(`/tickets/${id}`),
@@ -169,7 +165,18 @@ export const adminAPI = {
 
   listAgents: () => api.get('/agents'),
 
-  listAuditLogs: (params?: { page?: number; per_page?: number; entity_type?: string; action?: string }) =>
+  listAuditLogs: (params?: {
+    page?: number;
+    per_page?: number;
+    entity_type?: string;
+    entity_id?: string;
+    action?: string;
+    user_id?: string;
+    user_search?: string;
+    date_from?: string;
+    date_to?: string;
+    search?: string;
+  }) =>
     api.get('/admin/audit-logs', { params }),
 
   exportTickets: (params?: Record<string, string | number | boolean>) =>

@@ -9,6 +9,7 @@ import (
 // Lookup groups for admin-configurable enumerations.
 const (
 	LookupTicketCategory    = "ticket_category"
+	LookupTicketType        = "ticket_type"
 	LookupHoldReason        = "hold_reason"
 	LookupResolutionCode    = "resolution_code"
 	LookupClosureCode       = "closure_code"

@@ -113,6 +113,7 @@ export interface ITAMSettings {
   support_email?: string;
   timezone?: string;
   notify_ticket_created?: boolean;
+  notify_hq_on_site_ticket?: boolean;
   notify_ticket_assigned?: boolean;
   notify_ticket_status?: boolean;
   notify_new_comment?: boolean;

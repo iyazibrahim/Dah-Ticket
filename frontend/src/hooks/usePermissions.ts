@@ -21,6 +21,7 @@ export type Permissions = {
   canEditAnyWiki: boolean;
   canManageKBCategories: boolean;
   canPublishWiki: boolean;
+  isSiteIntakeStaff: boolean;
 };
 
 function computePermissions(user: User | null): Permissions {
@@ -35,6 +36,7 @@ function computePermissions(user: User | null): Permissions {
   const isDelegatedAdmin = isITAgent && isAdmin;
   const isFullAdmin = isSuperAdmin || (isManager && isAdmin) || (isLegacyAdmin && isAdmin);
   const isStaff = isITAgent || isManager || isLegacyAdmin;
+  const isSiteIntakeStaff = isStaff && !!user?.primary_location_id && !isFullAdmin && !isSuperAdmin;
 
   return {
     user,
@@ -55,6 +57,7 @@ function computePermissions(user: User | null): Permissions {
     canEditAnyWiki: isManager || hasAdminElevation,
     canManageKBCategories: hasAdminElevation,
     canPublishWiki: isManager || hasAdminElevation,
+    isSiteIntakeStaff,
   };
 }
 

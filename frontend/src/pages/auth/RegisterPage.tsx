@@ -91,7 +91,7 @@ export default function RegisterPage() {
         </div>
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20 text-white">
           <div className="mb-8">
-            <BrandLogo size="xl" />
+            <BrandLogo size="xl" variant="onDark" />
           </div>
           <h1 className="text-4xl xl:text-5xl font-bold leading-tight mb-4">
             Get Started<br />in Seconds.

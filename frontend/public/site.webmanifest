@@ -1,6 +1,6 @@
 {
-  "name": "DahTicket — IT Support",
-  "short_name": "DahTicket",
+  "name": "DigiDesk — IT Support",
+  "short_name": "DigiDesk",
   "description": "IT Support & Helpdesk",
   "start_url": "/",
   "scope": "/",
@@ -17,7 +17,7 @@
       "purpose": "any"
     },
     {
-      "src": "/apple-touch-icon.png",
+      "src": "/digidesk-logo-icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

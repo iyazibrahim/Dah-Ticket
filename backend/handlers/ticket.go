@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"dahticket-backend/config"
@@ -168,6 +169,31 @@ func CreateTicket(c *gin.Context) {
 		ticket.Requester.FirstName,
 		ticket.ID, ticket.Title)
 
+	// Notify Main Office IT for site tickets
+	siteName := ""
+	isSiteTicket := false
+	if ticket.Location != nil && ticket.Location.LocationType != "hq" {
+		isSiteTicket = true
+		siteName = ticket.Location.Name
+	} else if user.HasLocationScope() {
+		isSiteTicket = true
+		if ticket.Location != nil {
+			siteName = ticket.Location.Name
+		} else {
+			siteName = "Site"
+		}
+	}
+	if isSiteTicket {
+		requesterName := ticket.Requester.FirstName + " " + ticket.Requester.LastName
+		services.NotifyHQSiteTicketCreated(
+			ticket.OrganizationID,
+			ticket.ID,
+			ticket.Title,
+			siteName,
+			strings.TrimSpace(requesterName),
+		)
+	}
+
 	c.JSON(http.StatusCreated, gin.H{"ticket": toTicketResponse(ticket)})
 }
 
@@ -225,11 +251,6 @@ func ListTickets(c *gin.Context) {
 	// Filter by category
 	if category := c.Query("category"); category != "" {
 		query = query.Where("category = ?", category)
-	}
-
-	// Filter central intake
-	if c.Query("central_intake") == "true" {
-		query = query.Where("is_central_intake = ?", true)
 	}
 
 	// Filter by assignee
@@ -375,6 +396,15 @@ func UpdateTicket(c *gin.Context) {
 				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 				return
 			}
+		}
+	} else if actor.IsSiteIntakeStaff() {
+		if req.Priority != nil || req.AssigneeID != nil || req.Type != nil || req.Category != nil || req.Status != nil || req.LocationID != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Site staff can track tickets and add updates. Main Office IT handles assignment and resolution."})
+			return
+		}
+		if (req.Title != nil || req.Description != nil) && ticket.Status != models.StatusOpen {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You can only edit details of open tickets"})
+			return
 		}
 	} else if actor.IsStaffMember() {
 		canManage := models.CanManageTicketWorkflow(actor, ticket)
@@ -659,6 +689,10 @@ func AcceptTicket(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Staff access required"})
 		return
 	}
+	if actor.IsSiteIntakeStaff() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Site staff cannot accept tickets. Main Office IT handles assignment."})
+		return
+	}
 
 	var ticket models.Ticket
 	if err := database.DB.Preload("Requester").Preload("Assignee").First(&ticket, uint(ticketID)).Error; err != nil {
@@ -719,6 +753,10 @@ func EscalateTicket(c *gin.Context) {
 	actor, ok := middleware.GetUser(c)
 	if !ok || !actor.IsStaffMember() {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Staff access required"})
+		return
+	}
+	if actor.IsSiteIntakeStaff() {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Site staff cannot escalate tickets"})
 		return
 	}
 

@@ -1,8 +1,8 @@
-# DahTicket V2
+# DigiDesk
 
 **A modern, full-stack IT helpdesk and asset management system built with Go, React, and PostgreSQL.**
 
-DahTicket V2 is an internal company IT support platform designed for employee technical issue tracking, resolution management, and IT asset inventory. It combines ticket lifecycle management, SLA tracking, role-based access control, and enterprise-grade ITAM (IT Asset Management) in one unified dashboard.
+DigiDesk is an internal company IT support platform designed for employee technical issue tracking, resolution management, and IT asset inventory. It combines ticket lifecycle management, SLA tracking, role-based access control, and enterprise-grade ITAM (IT Asset Management) in one unified dashboard.
 
 ---
 
@@ -196,7 +196,7 @@ Backend will start on `http://localhost:8080`. Ensure PostgreSQL is running on l
 ### JWT Token Flow
 1. User logs in with email/password
 2. Backend validates credentials and generates JWT token (24-hour default expiration)
-3. Token stored in localStorage (`dahticket_token` key)
+3. Token stored in localStorage (`digidesk_token` key; legacy `dahticket_token` is migrated automatically)
 4. Axios interceptor auto-attaches `Authorization: Bearer <token>` to all API requests
 5. 401 Unauthorized responses trigger automatic redirect to login
 

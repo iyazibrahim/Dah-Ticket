@@ -250,13 +250,22 @@ func SeedITAMDefaults() {
 			existing.Name = s.Name
 			existing.Address = s.Address
 			existing.IsActive = true
+			if s.Name == "Digital Penang" {
+				existing.LocationType = "hq"
+			} else {
+				existing.LocationType = "site"
+			}
 			if err := DB.Save(&existing).Error; err != nil {
 				log.Printf("Failed updating location %s: %v", s.Name, err)
 			}
 			continue
 		}
 
-		newLocation := models.Location{Name: s.Name, Address: s.Address, IsActive: true}
+		locType := "site"
+		if s.Name == "Digital Penang" {
+			locType = "hq"
+		}
+		newLocation := models.Location{Name: s.Name, Address: s.Address, LocationType: locType, IsActive: true}
 		if err := DB.Create(&newLocation).Error; err != nil {
 			log.Printf("Failed seeding location %s: %v", s.Name, err)
 		}

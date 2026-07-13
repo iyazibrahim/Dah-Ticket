@@ -18,6 +18,7 @@ type ITAMSettings struct {
 	SupportEmail     string    `gorm:"type:varchar(255)" json:"support_email"`
 	Timezone         string    `gorm:"type:varchar(80);default:'Asia/Kuala_Lumpur'" json:"timezone"`
 	NotifyTicketCreated   bool `gorm:"default:true" json:"notify_ticket_created"`
+	NotifyHQOnSiteTicket bool `gorm:"default:true" json:"notify_hq_on_site_ticket"`
 	NotifyTicketAssigned  bool `gorm:"default:true" json:"notify_ticket_assigned"`
 	NotifyTicketStatus    bool `gorm:"default:true" json:"notify_ticket_status"`
 	NotifyNewComment      bool `gorm:"default:true" json:"notify_new_comment"`

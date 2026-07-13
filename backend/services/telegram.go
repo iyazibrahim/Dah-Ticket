@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"dahticket-backend/config"
 )
 
 // SendTelegramMessage posts a message to the configured global chat.
@@ -71,7 +73,7 @@ func SendTelegramTest() error {
 
 	payload := map[string]interface{}{
 		"chat_id":    chatID,
-		"text":       "DahTicket test notification — Telegram channel is configured.",
+		"text":       fmt.Sprintf("%s test notification — Telegram channel is configured.", config.ProductName),
 		"parse_mode": "HTML",
 	}
 	body, _ := json.Marshal(payload)

@@ -3,6 +3,10 @@ package services
 import (
 	"fmt"
 	"strings"
+
+	"dahticket-backend/config"
+	"dahticket-backend/database"
+	"dahticket-backend/models"
 )
 
 func DispatchTicketCreated(orgID uint, requesterEmail, requesterName string, ticketID uint, ticketTitle string) {
@@ -12,7 +16,7 @@ func DispatchTicketCreated(orgID uint, requesterEmail, requesterName string, tic
 	}
 
 	if settings.EmailEnabled {
-		subject := fmt.Sprintf("[DahTicket #%d] Ticket Created: %s", ticketID, ticketTitle)
+		subject := fmt.Sprintf("[%s #%d] Ticket Created: %s", config.ProductName, ticketID, ticketTitle)
 		body := buildEmailTemplate(
 			"Ticket Created",
 			fmt.Sprintf("Hi %s,", requesterName),
@@ -39,7 +43,7 @@ func DispatchTicketAssigned(orgID uint, assigneeEmail, assigneeName string, tick
 	}
 
 	if settings.EmailEnabled {
-		subject := fmt.Sprintf("[DahTicket #%d] Ticket Assigned to You", ticketID)
+		subject := fmt.Sprintf("[%s #%d] Ticket Assigned to You", config.ProductName, ticketID)
 		body := buildEmailTemplate(
 			"Ticket Assigned",
 			fmt.Sprintf("Hi %s,", assigneeName),
@@ -66,7 +70,7 @@ func DispatchTicketStatusChanged(orgID uint, recipientEmail, recipientName strin
 	}
 
 	if settings.EmailEnabled {
-		subject := fmt.Sprintf("[DahTicket #%d] Status Updated: %s → %s", ticketID, oldStatus, newStatus)
+		subject := fmt.Sprintf("[%s #%d] Status Updated: %s → %s", config.ProductName, ticketID, oldStatus, newStatus)
 		body := buildEmailTemplate(
 			"Ticket Status Updated",
 			fmt.Sprintf("Hi %s,", recipientName),
@@ -93,13 +97,13 @@ func DispatchNewComment(orgID uint, recipientEmail, recipientName string, ticket
 	}
 
 	if settings.EmailEnabled {
-		subject := fmt.Sprintf("[DahTicket #%d] New Comment from %s", ticketID, commenterName)
+		subject := fmt.Sprintf("[%s #%d] New Comment from %s", config.ProductName, ticketID, commenterName)
 		body := buildEmailTemplate(
 			"New Comment",
 			fmt.Sprintf("Hi %s,", recipientName),
 			fmt.Sprintf("%s added a comment on ticket <strong>#%d</strong>.", commenterName, ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s", ticketTitle),
-			"Log in to DahTicket to view the full comment.",
+			fmt.Sprintf("Log in to %s to view the full comment.", config.ProductName),
 		)
 		SendEmail([]string{recipientEmail}, subject, body)
 	}
@@ -115,4 +119,58 @@ func DispatchNewComment(orgID uint, recipientEmail, recipientName string, ticket
 
 func escapeTelegram(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
+}
+
+// DispatchHQSiteTicketCreated notifies Main Office IT when a site ticket is created.
+func DispatchHQSiteTicketCreated(orgID uint, ticketID uint, ticketTitle, siteName, requesterName string) {
+	settings, err := GetAppSettings(orgID)
+	if err != nil || !settings.NotifyTicketCreated || !settings.NotifyHQOnSiteTicket {
+		return
+	}
+
+	var hqStaff []models.User
+	database.DB.Where("organization_id = ? AND is_active = ?", orgID, true).
+		Where("role IN ?", []models.Role{models.RoleITAgent, models.RoleManager, models.RoleAdmin}).
+		Where("primary_location_id IS NULL").
+		Find(&hqStaff)
+
+	if len(hqStaff) == 0 {
+		return
+	}
+
+	link := fmt.Sprintf("/tickets/%d", ticketID)
+	title := fmt.Sprintf("New site ticket #%d", ticketID)
+	message := fmt.Sprintf("%s — from %s (by %s)", ticketTitle, siteName, requesterName)
+
+	if settings.EmailEnabled {
+		emails := make([]string, 0, len(hqStaff))
+		for _, u := range hqStaff {
+			if u.Email != "" {
+				emails = append(emails, u.Email)
+			}
+		}
+		if len(emails) > 0 {
+			subject := fmt.Sprintf("[%s #%d] New ticket from %s", config.ProductName, ticketID, siteName)
+			body := buildEmailTemplate(
+				"New Site Ticket",
+				"Hi team,",
+				fmt.Sprintf("A new ticket <strong>#%d</strong> was submitted from <strong>%s</strong>.", ticketID, siteName),
+				fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Requester:</strong> %s<br><strong>Status:</strong> Open", ticketTitle, requesterName),
+				"Please review and assign from the central queue.",
+			)
+			SendEmail(emails, subject, body)
+		}
+	}
+
+	for _, u := range hqStaff {
+		CreateInAppNotification(u.ID, title, message, "ticket_created", link)
+	}
+
+	if settings.TelegramEnabled {
+		msg := fmt.Sprintf(
+			"<b>New site ticket #%d</b> from %s\n%s\nRequester: %s",
+			ticketID, escapeTelegram(siteName), escapeTelegram(ticketTitle), escapeTelegram(requesterName),
+		)
+		SendTelegramMessage(msg)
+	}
 }

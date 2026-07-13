@@ -18,7 +18,7 @@ services:
       # - SMTP_PORT=587
       # - SMTP_USERNAME=your-outlook-email@company.com
       # - SMTP_PASSWORD=your-app-password
-      # - SMTP_FROM_NAME=DahTicket IT Support
+      # - SMTP_FROM_NAME=DigiDesk IT Support
       # - SMTP_FROM_ADDR=noreply@company.com
     volumes:
       - backend_uploads:/app/uploads

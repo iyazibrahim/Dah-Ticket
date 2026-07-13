@@ -4,6 +4,7 @@ import { invalidateLookupCache } from '../../hooks/useLookups';
 import { Pencil, Trash2, Save, Loader2 } from 'lucide-react';
 
 const GROUP_LABELS: Record<string, string> = {
+  ticket_type: 'Ticket Types',
   ticket_category: 'Ticket Categories',
   hold_reason: 'Hold Reasons',
   resolution_code: 'Resolution Codes',
@@ -23,7 +24,7 @@ export default function LookupSettingsPanel({ groups }: Props) {
   const [rows, setRows] = useState<AdminLookupRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<AdminLookupRow | null>(null);
-  const [form, setForm] = useState({ key: '', label: '', sort_order: 0, pauses_sla: false });
+  const [form, setForm] = useState({ key: '', label: '', description: '', sort_order: 0, pauses_sla: false });
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -42,7 +43,7 @@ export default function LookupSettingsPanel({ groups }: Props) {
 
   const resetForm = () => {
     setEditing(null);
-    setForm({ key: '', label: '', sort_order: 0, pauses_sla: false });
+    setForm({ key: '', label: '', description: '', sort_order: 0, pauses_sla: false });
   };
 
   const startEdit = (row: AdminLookupRow) => {
@@ -50,15 +51,27 @@ export default function LookupSettingsPanel({ groups }: Props) {
     setForm({
       key: row.key,
       label: row.label,
+      description: typeof row.metadata?.description === 'string' ? row.metadata.description : '',
       sort_order: row.sort_order,
       pauses_sla: Boolean(row.metadata?.pauses_sla),
     });
   };
 
+  const buildMetadata = () => {
+    const metadata: Record<string, unknown> = {};
+    if (form.description.trim()) {
+      metadata.description = form.description.trim();
+    }
+    if (activeGroup === 'hold_reason') {
+      metadata.pauses_sla = form.pauses_sla;
+    }
+    return Object.keys(metadata).length > 0 ? metadata : undefined;
+  };
+
   const save = async () => {
     setSaving(true);
     try {
-      const metadata = activeGroup === 'hold_reason' ? { pauses_sla: form.pauses_sla } : undefined;
+      const metadata = buildMetadata();
       if (editing) {
         await lookupAPI.update(activeGroup, editing.id, {
           label: form.label,
@@ -136,6 +149,13 @@ export default function LookupSettingsPanel({ groups }: Props) {
             </label>
           )}
         </div>
+        <textarea
+          placeholder="Description shown to users (plain language)"
+          value={form.description}
+          onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          rows={2}
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y"
+        />
         <div className="flex gap-2">
           <button type="button" onClick={save} disabled={saving || !form.label || (!editing && !form.key)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm disabled:opacity-50">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -156,6 +176,7 @@ export default function LookupSettingsPanel({ groups }: Props) {
               <tr>
                 <th className="px-4 py-2">Key</th>
                 <th className="px-4 py-2">Label</th>
+                <th className="px-4 py-2">Description</th>
                 <th className="px-4 py-2">Order</th>
                 <th className="px-4 py-2 w-24">Actions</th>
               </tr>
@@ -165,6 +186,9 @@ export default function LookupSettingsPanel({ groups }: Props) {
                 <tr key={row.id} className="border-t border-border/60">
                   <td className="px-4 py-2 font-mono text-xs">{row.key}</td>
                   <td className="px-4 py-2">{row.label}</td>
+                  <td className="px-4 py-2 text-muted-foreground max-w-xs truncate">
+                    {typeof row.metadata?.description === 'string' ? row.metadata.description : '—'}
+                  </td>
                   <td className="px-4 py-2">{row.sort_order}</td>
                   <td className="px-4 py-2">
                     <div className="flex gap-1">
@@ -175,7 +199,7 @@ export default function LookupSettingsPanel({ groups }: Props) {
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">No items configured</td></tr>
+                <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">No items configured</td></tr>
               )}
             </tbody>
           </table>

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"dahticket-backend/database"
+	"dahticket-backend/middleware"
 	"dahticket-backend/models"
 	"dahticket-backend/services"
 
@@ -52,6 +53,7 @@ func AddComment(c *gin.Context) {
 
 	userID := c.MustGet("userID").(uint)
 	userRole := c.MustGet("userRole").(models.Role)
+	actor, _ := middleware.GetUser(c)
 
 	// Verify ticket exists
 	var ticket models.Ticket
@@ -71,6 +73,11 @@ func AddComment(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Internal comments are only for IT staff"})
 			return
 		}
+	}
+
+	if actor.IsSiteIntakeStaff() && req.IsInternal {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Site staff cannot add internal notes"})
+		return
 	}
 
 	comment := models.Comment{

@@ -235,7 +235,7 @@ func generateToken(user models.User) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(config.GetJWTExpiration())),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "dahticket",
+			Issuer:    config.ProductJWTIssuer,
 		},
 	}
 

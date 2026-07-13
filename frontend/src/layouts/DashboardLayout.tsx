@@ -259,7 +259,7 @@ export default function DashboardLayout() {
             <button className="md:hidden p-1.5 -ml-1 text-muted-foreground hover:text-foreground" onClick={() => setSidebarOpen(true)}>
               <Menu className="h-5 w-5" />
             </button>
-            <BrandLogo to="/" size="md" className="md:hidden shrink-0" />
+          <BrandLogo to="/" size="md" variant="compact" className="md:hidden shrink-0" />
             <button
               className="md:hidden p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted"
               onClick={() => setMobileSearchOpen(true)}

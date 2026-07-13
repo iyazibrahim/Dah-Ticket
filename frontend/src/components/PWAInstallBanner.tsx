@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
-
-const DISMISS_KEY = 'dahticket_pwa_install_dismissed';
+import { BRAND_NAME } from '../lib/brand';
+import { getPwaDismissKey } from '../lib/storage';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -19,7 +19,8 @@ function isStandalone(): boolean {
 
 export default function PWAInstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === '1');
+  const dismissKey = getPwaDismissKey();
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(dismissKey) === '1');
   const [showIOSHint, setShowIOSHint] = useState(() => isIOS() && !isStandalone());
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export default function PWAInstallBanner() {
   }, [dismissed]);
 
   const dismiss = () => {
-    localStorage.setItem(DISMISS_KEY, '1');
+    localStorage.setItem(dismissKey, '1');
     setDismissed(true);
     setDeferredPrompt(null);
     setShowIOSHint(false);
@@ -56,7 +57,7 @@ export default function PWAInstallBanner() {
     <div className="mb-4 flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
       <Download className="h-5 w-5 text-primary shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground">Install DahTicket</p>
+        <p className="text-sm font-medium text-foreground">Install {BRAND_NAME}</p>
         <p className="text-xs text-muted-foreground mt-0.5">
           {showIOSHint && !deferredPrompt
             ? 'Tap Share, then "Add to Home Screen" for quick access.'

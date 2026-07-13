@@ -1,5 +1,11 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { authAPI } from '../services/api';
+import {
+  clearAuthStorage,
+  getAuthToken,
+  setAuthToken,
+  setAuthUserRaw,
+} from '../lib/storage';
 import type { User } from '../types';
 
 interface AuthContextType {
@@ -16,13 +22,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('dahticket_token'));
+  const [token, setToken] = useState<string | null>(getAuthToken());
   const [isLoading, setIsLoading] = useState(true);
 
   // On mount, validate the stored token
   useEffect(() => {
     const validateToken = async () => {
-      const storedToken = localStorage.getItem('dahticket_token');
+      const storedToken = getAuthToken();
       if (!storedToken) {
         setIsLoading(false);
         return;
@@ -34,8 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setToken(storedToken);
       } catch {
         // Token is invalid — clear it
-        localStorage.removeItem('dahticket_token');
-        localStorage.removeItem('dahticket_user');
+        clearAuthStorage();
         setToken(null);
         setUser(null);
       } finally {
@@ -50,8 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await authAPI.login(email, password);
     const { token: newToken, user: newUser } = response.data;
 
-    localStorage.setItem('dahticket_token', newToken);
-    localStorage.setItem('dahticket_user', JSON.stringify(newUser));
+    setAuthToken(newToken);
+    setAuthUserRaw(JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
   };
@@ -60,15 +65,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const response = await authAPI.register(data);
     const { token: newToken, user: newUser } = response.data;
 
-    localStorage.setItem('dahticket_token', newToken);
-    localStorage.setItem('dahticket_user', JSON.stringify(newUser));
+    setAuthToken(newToken);
+    setAuthUserRaw(JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
   };
 
   const logout = () => {
-    localStorage.removeItem('dahticket_token');
-    localStorage.removeItem('dahticket_user');
+    clearAuthStorage();
     setToken(null);
     setUser(null);
   };

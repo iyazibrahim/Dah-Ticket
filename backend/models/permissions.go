@@ -58,6 +58,11 @@ func (u User) IsAssignableStaff() bool {
 	return u.Role == RoleITAgent || u.Role == RoleManager || u.Role == RoleAdmin
 }
 
+// IsSiteIntakeStaff is true for location-scoped staff (site IT/manager) who submit and track site tickets.
+func (u User) IsSiteIntakeStaff() bool {
+	return u.HasLocationScope() && u.IsStaffMember()
+}
+
 // HasLocationScope is true when the user is restricted to a single primary location (PIC).
 func (u User) HasLocationScope() bool {
 	if u.IsSuperAdmin || u.IsFullAdmin() {
