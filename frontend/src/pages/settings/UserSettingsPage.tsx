@@ -12,7 +12,7 @@ type Panel = 'account' | 'notifications' | null;
 
 export default function UserSettingsPage() {
   const { user } = useAuth();
-  const [active, setActive] = useState<Panel>(null);
+  const [active, setActive] = useState<Panel>('account');
   const [prefs, setPrefs] = useState<NotificationPreference[]>([]);
   const [prefsLoading, setPrefsLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -114,62 +114,61 @@ export default function UserSettingsPage() {
     }
   };
 
+  const tileClass = (key: Panel) =>
+    `text-left rounded-2xl border p-5 sm:p-6 transition-all h-full ${
+      active === key
+        ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+        : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30'
+    }`;
+
   return (
     <PageContainer>
       <PageHeader title="Settings" subtitle="Manage your account and how DigiDesk notifies you" />
 
       {feedback && (
         <div className={`mb-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm ${feedback.type === 'success' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
-          {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+          {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
           {feedback.message}
         </div>
       )}
 
-      {/* Bento grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <button
-          type="button"
-          onClick={() => setActive(active === 'account' ? null : 'account')}
-          className={`text-left rounded-2xl border p-6 transition-all ${active === 'account' ? 'border-foreground bg-muted/40 ring-1 ring-foreground/10' : 'border-border bg-card hover:border-foreground/30'}`}
-        >
+      {/* Bento: 3 equal tiles per row on desktop */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <button type="button" onClick={() => setActive('account')} className={tileClass('account')}>
           <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
+            <div className="w-11 h-11 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shrink-0">
               <User className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="font-semibold text-lg">Account</h2>
-              <p className="text-sm text-muted-foreground mt-1">Name, email, and password for your DigiDesk login.</p>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-base sm:text-lg text-foreground">Account</h2>
+              <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">Name, email, and password for your DigiDesk login.</p>
             </div>
           </div>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActive(active === 'notifications' ? null : 'notifications')}
-          className={`text-left rounded-2xl border p-6 transition-all ${active === 'notifications' ? 'border-foreground bg-muted/40 ring-1 ring-foreground/10' : 'border-border bg-card hover:border-foreground/30'}`}
-        >
+        <button type="button" onClick={() => setActive('notifications')} className={tileClass('notifications')}>
           <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-teal-700 text-white flex items-center justify-center shrink-0">
+            <div className="w-11 h-11 rounded-xl bg-primary/90 text-primary-foreground flex items-center justify-center shrink-0">
               <Bell className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="font-semibold text-lg">Notifications</h2>
-              <p className="text-sm text-muted-foreground mt-1">Choose which email and in-app alerts you want to receive.</p>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-base sm:text-lg text-foreground">Notifications</h2>
+              <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">Choose which email and in-app alerts you want to receive.</p>
             </div>
           </div>
         </button>
 
         <Link
           to="/my-assets"
-          className="rounded-2xl border border-border bg-card p-6 hover:border-foreground/30 transition-all md:col-span-2"
+          className="rounded-2xl border border-border bg-card p-5 sm:p-6 hover:border-primary/40 hover:bg-muted/30 transition-all h-full sm:col-span-2 lg:col-span-1"
         >
           <div className="flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-amber-700 text-white flex items-center justify-center shrink-0">
+            <div className="w-11 h-11 rounded-xl bg-primary/80 text-primary-foreground flex items-center justify-center shrink-0">
               <Package className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="font-semibold text-lg">My Assets</h2>
-              <p className="text-sm text-muted-foreground mt-1">View assigned gear, request loans, and report problems.</p>
+            <div className="min-w-0">
+              <h2 className="font-semibold text-base sm:text-lg text-foreground">My Assets</h2>
+              <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">View assigned gear, request loans, and report problems.</p>
             </div>
           </div>
         </Link>
@@ -178,32 +177,45 @@ export default function UserSettingsPage() {
       {active === 'account' && (
         <div className="rounded-2xl border border-border bg-card p-6 space-y-8">
           <form onSubmit={saveProfile} className="space-y-4 max-w-lg">
-            <h3 className="font-medium flex items-center gap-2"><User className="w-4 h-4" /> Profile</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <h3 className="font-medium flex items-center gap-2.5 text-foreground">
+              <User className="w-4 h-4 text-primary" /> Profile
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-medium">First name</label>
-                <input className="w-full mt-1 px-3 py-2 rounded-lg border border-border text-sm" value={profileForm.first_name} onChange={(e) => setProfileForm({ ...profileForm, first_name: e.target.value })} />
+                <label className="text-xs font-medium text-muted-foreground">First name</label>
+                <input className="w-full mt-1.5 px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" value={profileForm.first_name} onChange={(e) => setProfileForm({ ...profileForm, first_name: e.target.value })} />
               </div>
               <div>
-                <label className="text-xs font-medium">Last name</label>
-                <input className="w-full mt-1 px-3 py-2 rounded-lg border border-border text-sm" value={profileForm.last_name} onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })} />
+                <label className="text-xs font-medium text-muted-foreground">Last name</label>
+                <input className="w-full mt-1.5 px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" value={profileForm.last_name} onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })} />
               </div>
             </div>
             <div>
-              <label className="text-xs font-medium">Email</label>
-              <input className="w-full mt-1 px-3 py-2 rounded-lg border border-border text-sm bg-muted" value={user?.email || ''} disabled />
+              <label className="text-xs font-medium text-muted-foreground">Email</label>
+              <input className="w-full mt-1.5 px-3 py-2.5 rounded-lg border border-border text-sm bg-muted" value={user?.email || ''} disabled />
             </div>
-            <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium disabled:opacity-50">
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save profile'}
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium shadow-sm disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              <span>Save profile</span>
             </button>
           </form>
 
           <form onSubmit={savePassword} className="space-y-4 max-w-lg border-t border-border pt-8">
-            <h3 className="font-medium flex items-center gap-2"><Lock className="w-4 h-4" /> Password</h3>
-            <input type="password" placeholder="Current password" className="w-full px-3 py-2 rounded-lg border border-border text-sm" value={passwordForm.old_password} onChange={(e) => setPasswordForm({ ...passwordForm, old_password: e.target.value })} required />
-            <input type="password" placeholder="New password" className="w-full px-3 py-2 rounded-lg border border-border text-sm" value={passwordForm.new_password} onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })} required />
-            <input type="password" placeholder="Confirm new password" className="w-full px-3 py-2 rounded-lg border border-border text-sm" value={passwordForm.confirm_password} onChange={(e) => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })} required />
-            <button type="submit" disabled={busy} className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted disabled:opacity-50">
+            <h3 className="font-medium flex items-center gap-2.5 text-foreground">
+              <Lock className="w-4 h-4 text-primary" /> Password
+            </h3>
+            <input type="password" placeholder="Current password" className="w-full px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" value={passwordForm.old_password} onChange={(e) => setPasswordForm({ ...passwordForm, old_password: e.target.value })} required />
+            <input type="password" placeholder="New password" className="w-full px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" value={passwordForm.new_password} onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })} required />
+            <input type="password" placeholder="Confirm new password" className="w-full px-3 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" value={passwordForm.confirm_password} onChange={(e) => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })} required />
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border border-border text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
               Update password
             </button>
           </form>
@@ -212,24 +224,26 @@ export default function UserSettingsPage() {
 
       {active === 'notifications' && (
         <div className="rounded-2xl border border-border bg-card p-6">
-          <h3 className="font-medium mb-4 flex items-center gap-2"><Bell className="w-4 h-4" /> Notification preferences</h3>
+          <h3 className="font-medium mb-4 flex items-center gap-2.5 text-foreground">
+            <Bell className="w-4 h-4 text-primary" /> Notification preferences
+          </h3>
           {prefsLoading ? (
-            <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+            <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
           ) : (
             <div className="divide-y divide-border">
               {prefs.map((p) => (
-                <div key={p.event_key} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div key={p.event_key} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <p className="font-medium text-sm">{p.label}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{p.description}</p>
+                    <p className="font-medium text-sm text-foreground">{p.label}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{p.description}</p>
                   </div>
-                  <div className="flex gap-4 text-sm">
-                    <label className="inline-flex items-center gap-2">
-                      <input type="checkbox" checked={p.email_enabled} disabled={busy} onChange={(e) => togglePref(p.event_key, 'email_enabled', e.target.checked)} />
+                  <div className="flex gap-5 text-sm shrink-0">
+                    <label className="inline-flex items-center gap-2.5 cursor-pointer">
+                      <input type="checkbox" className="rounded border-border text-primary focus:ring-primary/20" checked={p.email_enabled} disabled={busy} onChange={(e) => togglePref(p.event_key, 'email_enabled', e.target.checked)} />
                       Email
                     </label>
-                    <label className="inline-flex items-center gap-2">
-                      <input type="checkbox" checked={p.in_app_enabled} disabled={busy} onChange={(e) => togglePref(p.event_key, 'in_app_enabled', e.target.checked)} />
+                    <label className="inline-flex items-center gap-2.5 cursor-pointer">
+                      <input type="checkbox" className="rounded border-border text-primary focus:ring-primary/20" checked={p.in_app_enabled} disabled={busy} onChange={(e) => togglePref(p.event_key, 'in_app_enabled', e.target.checked)} />
                       In-app
                     </label>
                   </div>

@@ -174,27 +174,27 @@ export default function AssetRequestsPage() {
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
                   {req.status === 'pending' && req.type === 'fulfillment' && !req.asset_id && (
-                    <button type="button" disabled={busy} onClick={() => openFulfill(req.id)} className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted">
+                    <button type="button" disabled={busy} onClick={() => openFulfill(req.id)} className="inline-flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg border border-border hover:bg-muted">
                       Assign asset
                     </button>
                   )}
                   {req.status === 'pending' && !(req.type === 'fulfillment' && !req.asset_id) && (
                     <>
-                      <button type="button" disabled={busy} onClick={() => act(() => itamAPI.approveAssetRequest(req.id), 'Approved')} className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white disabled:opacity-50">
+                      <button type="button" disabled={busy} onClick={() => act(() => itamAPI.approveAssetRequest(req.id), 'Approved')} className="inline-flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">
                         Approve
                       </button>
-                      <button type="button" disabled={busy} onClick={() => { setRejectId(req.id); setRejectReason(''); }} className="px-3 py-1.5 text-xs rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50">
+                      <button type="button" disabled={busy} onClick={() => { setRejectId(req.id); setRejectReason(''); }} className="inline-flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50">
                         Reject
                       </button>
                     </>
                   )}
                   {req.status === 'approved' && (req.type === 'loan' || req.type === 'fulfillment') && (
-                    <button type="button" disabled={busy} onClick={() => act(() => itamAPI.checkoutAssetRequest(req.id), 'Checked out')} className="px-3 py-1.5 text-xs rounded-lg bg-teal-600 text-white">
+                    <button type="button" disabled={busy} onClick={() => act(() => itamAPI.checkoutAssetRequest(req.id), 'Checked out')} className="inline-flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground">
                       Confirm check-out
                     </button>
                   )}
                   {(req.status === 'return_requested' || req.status === 'checked_out' || req.status === 'overdue') && (
-                    <button type="button" disabled={busy} onClick={() => act(() => itamAPI.confirmAssetReturn(req.id), 'Return confirmed')} className="px-3 py-1.5 text-xs rounded-lg bg-foreground text-background">
+                    <button type="button" disabled={busy} onClick={() => act(() => itamAPI.confirmAssetReturn(req.id), 'Return confirmed')} className="inline-flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground">
                       Confirm return
                     </button>
                   )}
