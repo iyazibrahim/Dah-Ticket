@@ -165,44 +165,111 @@ func NotifyHQSiteTicketCreated(orgID uint, ticketID uint, ticketTitle, siteName,
 
 // buildEmailTemplate creates a clean, branded HTML email.
 func buildEmailTemplate(heading, greeting, mainText, details, footer string) string {
+	return buildEmailTemplateWithCTA(heading, greeting, mainText, details, footer, "", "")
+}
+
+// buildEmailTemplateWithCTA creates branded HTML with an optional primary CTA button.
+func buildEmailTemplateWithCTA(heading, greeting, mainText, details, footer, ctaLabel, ctaURL string) string {
+	product := config.ProductName
+	accent := "#0f766e" // teal aligned with practical IT tools (not purple gradient)
+
 	footerHTML := ""
 	if footer != "" {
-		footerHTML = fmt.Sprintf(`<p style="color: #6b7280; font-size: 14px; margin-top: 16px;">%s</p>`, footer)
+		footerHTML = fmt.Sprintf(`<p style="color:#64748b;font-size:14px;line-height:1.5;margin:20px 0 0;">%s</p>`, footer)
 	}
 
 	detailsHTML := ""
 	if details != "" {
 		detailsHTML = fmt.Sprintf(`
-			<div style="background: #f3f4f6; border-radius: 8px; padding: 16px; margin: 16px 0; font-size: 14px; color: #374151;">
-				%s
-			</div>`, details)
+			<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="margin:20px 0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+				<tr><td style="padding:16px 18px;font-size:14px;line-height:1.6;color:#334155;">%s</td></tr>
+			</table>`, details)
 	}
 
-	return fmt.Sprintf(`
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; background: #f9fafb;">
-	<div style="max-width: 560px; margin: 0 auto; padding: 40px 20px;">
-		<div style="background: white; border-radius: 12px; border: 1px solid #e5e7eb; overflow: hidden;">
-			<div style="background: linear-gradient(135deg, #2563eb, #4f46e5); padding: 24px 32px;">
-				<h1 style="color: white; margin: 0; font-size: 18px; font-weight: 600;">🎫 %s</h1>
-			</div>
-			<div style="padding: 32px;">
-				<p style="color: #374151; font-size: 15px; margin: 0 0 12px;">%s</p>
-				<p style="color: #374151; font-size: 15px; margin: 0;">%s</p>
-				%s
-				%s
-			</div>
-			<div style="padding: 16px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb;">
-				<p style="color: #9ca3af; font-size: 12px; margin: 0; text-align: center;">
-					`+config.ProductSupportName+` · This is an automated notification
-				</p>
-			</div>
-		</div>
-	</div>
+	ctaHTML := ""
+	if ctaLabel != "" && ctaURL != "" {
+		ctaHTML = fmt.Sprintf(`
+			<table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 8px;">
+				<tr>
+					<td style="border-radius:8px;background:%s;">
+						<a href="%s" style="display:inline-block;padding:12px 22px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">%s</a>
+					</td>
+				</tr>
+			</table>
+			<p style="margin:0;font-size:12px;color:#94a3b8;">Or open: <a href="%s" style="color:%s;">%s</a></p>`,
+			accent, ctaURL, ctaLabel, ctaURL, accent, ctaURL)
+	}
+
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>%s</title>
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Georgia,'Times New Roman',serif;">
+	<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:32px 12px;">
+		<tr><td align="center">
+			<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+				<tr>
+					<td style="padding:22px 28px;background:#0f172a;border-bottom:3px solid %s;">
+						<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;">%s</p>
+						<h1 style="margin:6px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:650;color:#f8fafc;line-height:1.3;">%s</h1>
+					</td>
+				</tr>
+				<tr>
+					<td style="padding:28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+						<p style="margin:0 0 12px;font-size:15px;color:#334155;line-height:1.5;">%s</p>
+						<p style="margin:0;font-size:15px;color:#334155;line-height:1.55;">%s</p>
+						%s
+						%s
+						%s
+					</td>
+				</tr>
+				<tr>
+					<td style="padding:16px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+						<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;color:#94a3b8;text-align:center;">
+							%s · Automated notification — please do not reply
+						</p>
+					</td>
+				</tr>
+			</table>
+		</td></tr>
+	</table>
 </body>
-</html>`, heading, greeting, mainText, detailsHTML, footerHTML)
+</html>`, heading, accent, product, heading, greeting, mainText, detailsHTML, ctaHTML, footerHTML, config.ProductSupportName)
+}
+
+// BuildPlainTextEmail creates a plain-text alternative body.
+func BuildPlainTextEmail(heading, greeting, mainText, details, ctaURL string) string {
+	var b strings.Builder
+	b.WriteString(heading)
+	b.WriteString("\n\n")
+	b.WriteString(greeting)
+	b.WriteString("\n\n")
+	b.WriteString(stripHTMLApprox(mainText))
+	b.WriteString("\n\n")
+	if details != "" {
+		b.WriteString(stripHTMLApprox(details))
+		b.WriteString("\n\n")
+	}
+	if ctaURL != "" {
+		b.WriteString("Open: ")
+		b.WriteString(ctaURL)
+		b.WriteString("\n")
+	}
+	b.WriteString("\n— ")
+	b.WriteString(config.ProductSupportName)
+	return b.String()
+}
+
+func stripHTMLApprox(s string) string {
+	replacer := strings.NewReplacer(
+		"<br>", "\n", "<br/>", "\n", "<br />", "\n",
+		"<strong>", "", "</strong>", "",
+		"&nbsp;", " ",
+	)
+	return replacer.Replace(s)
 }
 
 func getEnvDefault(key, fallback string) string {

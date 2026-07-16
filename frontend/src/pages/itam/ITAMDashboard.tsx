@@ -101,6 +101,11 @@ export default function ITAMDashboard() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {isStaff && (
+              <Link to="/itam/requests" className="inline-flex items-center gap-2 border border-border px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted">
+                Requests
+              </Link>
+            )}
+            {isStaff && (
               <Link to="/itam/scanner" className="inline-flex items-center gap-2 border border-border px-4 py-2 rounded-lg text-sm font-medium hover:bg-muted">
                 <QrCode className="h-4 w-4" /> Scan QR
               </Link>

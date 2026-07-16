@@ -15,14 +15,23 @@ func DispatchTicketCreated(orgID uint, requesterEmail, requesterName string, tic
 		return
 	}
 
+	var requester models.User
+	database.DB.Where("email = ? AND organization_id = ?", requesterEmail, orgID).First(&requester)
+	if requester.ID != 0 && !UserAllowsEmail(requester.ID, models.NotifyEventTicketCreated) {
+		return
+	}
+
 	if settings.EmailEnabled {
 		subject := fmt.Sprintf("[%s #%d] Ticket Created: %s", config.ProductName, ticketID, ticketTitle)
-		body := buildEmailTemplate(
+		cta := FrontendBaseURL() + fmt.Sprintf("/tickets/%d", ticketID)
+		body := buildEmailTemplateWithCTA(
 			"Ticket Created",
 			fmt.Sprintf("Hi %s,", requesterName),
 			fmt.Sprintf("Your ticket <strong>#%d</strong> has been created successfully.", ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Status:</strong> Open", ticketTitle),
 			"Our IT team will review your ticket shortly.",
+			"View ticket",
+			cta,
 		)
 		SendEmail([]string{requesterEmail}, subject, body)
 	}
@@ -42,14 +51,23 @@ func DispatchTicketAssigned(orgID uint, assigneeEmail, assigneeName string, tick
 		return
 	}
 
+	var assignee models.User
+	database.DB.Where("email = ? AND organization_id = ?", assigneeEmail, orgID).First(&assignee)
+	if assignee.ID != 0 && !UserAllowsEmail(assignee.ID, models.NotifyEventTicketAssigned) {
+		return
+	}
+
 	if settings.EmailEnabled {
 		subject := fmt.Sprintf("[%s #%d] Ticket Assigned to You", config.ProductName, ticketID)
-		body := buildEmailTemplate(
+		cta := FrontendBaseURL() + fmt.Sprintf("/tickets/%d", ticketID)
+		body := buildEmailTemplateWithCTA(
 			"Ticket Assigned",
 			fmt.Sprintf("Hi %s,", assigneeName),
 			fmt.Sprintf("Ticket <strong>#%d</strong> has been assigned to you.", ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s", ticketTitle),
 			"Please review and begin working on this ticket.",
+			"Open ticket",
+			cta,
 		)
 		SendEmail([]string{assigneeEmail}, subject, body)
 	}
@@ -69,14 +87,23 @@ func DispatchTicketStatusChanged(orgID uint, recipientEmail, recipientName strin
 		return
 	}
 
+	var recipient models.User
+	database.DB.Where("email = ? AND organization_id = ?", recipientEmail, orgID).First(&recipient)
+	if recipient.ID != 0 && !UserAllowsEmail(recipient.ID, models.NotifyEventTicketStatus) {
+		return
+	}
+
 	if settings.EmailEnabled {
 		subject := fmt.Sprintf("[%s #%d] Status Updated: %s → %s", config.ProductName, ticketID, oldStatus, newStatus)
-		body := buildEmailTemplate(
+		cta := FrontendBaseURL() + fmt.Sprintf("/tickets/%d", ticketID)
+		body := buildEmailTemplateWithCTA(
 			"Ticket Status Updated",
 			fmt.Sprintf("Hi %s,", recipientName),
 			fmt.Sprintf("The status of ticket <strong>#%d</strong> has been updated.", ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Status:</strong> %s → %s", ticketTitle, oldStatus, newStatus),
 			"",
+			"View ticket",
+			cta,
 		)
 		SendEmail([]string{recipientEmail}, subject, body)
 	}
@@ -96,14 +123,23 @@ func DispatchNewComment(orgID uint, recipientEmail, recipientName string, ticket
 		return
 	}
 
+	var recipient models.User
+	database.DB.Where("email = ? AND organization_id = ?", recipientEmail, orgID).First(&recipient)
+	if recipient.ID != 0 && !UserAllowsEmail(recipient.ID, models.NotifyEventTicketComment) {
+		return
+	}
+
 	if settings.EmailEnabled {
 		subject := fmt.Sprintf("[%s #%d] New Comment from %s", config.ProductName, ticketID, commenterName)
-		body := buildEmailTemplate(
+		cta := FrontendBaseURL() + fmt.Sprintf("/tickets/%d", ticketID)
+		body := buildEmailTemplateWithCTA(
 			"New Comment",
 			fmt.Sprintf("Hi %s,", recipientName),
 			fmt.Sprintf("%s added a comment on ticket <strong>#%d</strong>.", commenterName, ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s", ticketTitle),
 			fmt.Sprintf("Log in to %s to view the full comment.", config.ProductName),
+			"View comment",
+			cta,
 		)
 		SendEmail([]string{recipientEmail}, subject, body)
 	}
@@ -151,12 +187,15 @@ func DispatchHQSiteTicketCreated(orgID uint, ticketID uint, ticketTitle, siteNam
 		}
 		if len(emails) > 0 {
 			subject := fmt.Sprintf("[%s #%d] New ticket from %s", config.ProductName, ticketID, siteName)
-			body := buildEmailTemplate(
+			cta := FrontendBaseURL() + link
+			body := buildEmailTemplateWithCTA(
 				"New Site Ticket",
 				"Hi team,",
 				fmt.Sprintf("A new ticket <strong>#%d</strong> was submitted from <strong>%s</strong>.", ticketID, siteName),
 				fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Requester:</strong> %s<br><strong>Status:</strong> Open", ticketTitle, requesterName),
 				"Please review and assign from the central queue.",
+				"Open ticket",
+				cta,
 			)
 			SendEmail(emails, subject, body)
 		}

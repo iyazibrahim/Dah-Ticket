@@ -427,3 +427,97 @@ export interface BulkAssetActionResponse {
   failed: number;
   errors: BulkAssetActionError[];
 }
+
+export type AssetRequestType = 'loan' | 'assignment' | 'fulfillment';
+export type AssetRequestStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'checked_out'
+  | 'return_requested'
+  | 'returned'
+  | 'overdue'
+  | 'assigned';
+
+export interface AssetUserMeta {
+  id: number;
+  user_id: number;
+  asset_id: number;
+  personal_label: string;
+  location_hint: string;
+  user_notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetWithMeta extends Asset {
+  user_meta?: AssetUserMeta | null;
+}
+
+export interface AssetRequest {
+  id: number;
+  organization_id: number;
+  type: AssetRequestType;
+  status: AssetRequestStatus;
+  requester_id: number;
+  requester?: AssetUser;
+  asset_id?: number | null;
+  asset?: Asset | null;
+  category_id?: number | null;
+  category?: AssetCategory | null;
+  asset_type_id?: number | null;
+  asset_type?: AssetType | null;
+  home_location_id?: number | null;
+  home_location?: Location | null;
+  loan_to_location_id?: number | null;
+  loan_to_location?: Location | null;
+  start_at?: string | null;
+  due_at?: string | null;
+  reason: string;
+  reject_reason?: string;
+  approved_by?: number | null;
+  approver?: AssetUser | null;
+  ticket_id?: number | null;
+  checked_out_at?: string | null;
+  returned_at?: string | null;
+  condition_on_return_id?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetRequestBadge {
+  pending: number;
+  return_requested: number;
+  overdue: number;
+  total: number;
+}
+
+export interface PaginatedAssetRequestsResponse {
+  requests: AssetRequest[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+export interface CreateAssetRequestPayload {
+  type: AssetRequestType;
+  asset_id?: number;
+  category_id?: number;
+  asset_type_id?: number;
+  loan_to_location_id?: number;
+  start_at?: string;
+  due_at?: string;
+  reason: string;
+  create_ticket?: boolean;
+}
+
+export interface NotificationPreference {
+  event_key: string;
+  label: string;
+  description: string;
+  email_enabled: boolean;
+  in_app_enabled: boolean;
+}
+

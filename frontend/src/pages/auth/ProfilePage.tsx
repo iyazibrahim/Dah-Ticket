@@ -207,12 +207,17 @@ export default function ProfilePage() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-        <div className="p-5 border-b border-border flex items-center gap-3 bg-muted/20">
-          <Package className="h-5 w-5 text-primary" />
-          <div>
-            <h2 className="font-semibold text-foreground text-lg">My Assets</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Assets currently assigned to you</p>
+        <div className="p-5 border-b border-border flex items-center justify-between gap-3 bg-muted/20">
+          <div className="flex items-center gap-3">
+            <Package className="h-5 w-5 text-primary" />
+            <div>
+              <h2 className="font-semibold text-foreground text-lg">My Assets</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Assets currently assigned to you</p>
+            </div>
           </div>
+          <Link to="/my-assets" className="text-xs font-medium text-primary hover:underline whitespace-nowrap">
+            Open My Assets
+          </Link>
         </div>
 
         <div className="p-4">

@@ -26,6 +26,13 @@ import type {
   BulkAssetActionPayload,
   BulkAssignAssetsPayload,
   BulkAssetActionResponse,
+  AssetRequest,
+  AssetRequestBadge,
+  PaginatedAssetRequestsResponse,
+  CreateAssetRequestPayload,
+  AssetUserMeta,
+  AssetWithMeta,
+  NotificationPreference,
 } from '../types/itam';
 
 // --- Asset CRUD ---
@@ -64,8 +71,71 @@ export const itamAPI = {
   resolveScannedQR: (token: string): Promise<{ data: QRResolveResponse }> =>
     api.post('/itam/scan/resolve', { token }),
 
-  listMyAssets: (params?: { page?: number; per_page?: number; search?: string }): Promise<{ data: PaginatedAssetsResponse }> =>
+  listMyAssets: (params?: { page?: number; per_page?: number; search?: string }): Promise<{ data: PaginatedAssetsResponse & { assets: AssetWithMeta[] } }> =>
     api.get('/itam/my-assets', { params }),
+
+  getMyAssetMeta: (id: number): Promise<{ data: { meta: AssetUserMeta | null } }> =>
+    api.get(`/itam/my-assets/${id}/meta`),
+
+  updateMyAssetMeta: (id: number, data: Partial<Pick<AssetUserMeta, 'personal_label' | 'location_hint' | 'user_notes'>>): Promise<{ data: { meta: AssetUserMeta } }> =>
+    api.put(`/itam/my-assets/${id}/meta`, data),
+
+  reportAssetProblem: (id: number, data: { description: string; title?: string }): Promise<{ data: { ticket: { id: number }; message: string } }> =>
+    api.post(`/itam/my-assets/${id}/report-problem`, data),
+
+  listCatalog: (params?: AssetListParams): Promise<{ data: PaginatedAssetsResponse }> =>
+    api.get('/itam/catalog', { params }),
+
+  getPublicLocations: (): Promise<{ data: { locations: Location[] } }> =>
+    api.get('/itam/public/locations'),
+
+  getPublicCategories: (): Promise<{ data: { categories: AssetCategory[] } }> =>
+    api.get('/itam/public/categories'),
+
+  getPublicTypes: (params?: { category_id?: number }): Promise<{ data: { types: AssetType[] } }> =>
+    api.get('/itam/public/types', { params }),
+
+  submitAssetRequest: (data: CreateAssetRequestPayload): Promise<{ data: { request: AssetRequest } }> =>
+    api.post('/itam/requests', data),
+
+  listMyAssetRequests: (params?: { page?: number; per_page?: number; status?: string }): Promise<{ data: PaginatedAssetRequestsResponse }> =>
+    api.get('/itam/requests/mine', { params }),
+
+  getAssetRequest: (id: number): Promise<{ data: { request: AssetRequest } }> =>
+    api.get(`/itam/requests/${id}`),
+
+  cancelAssetRequest: (id: number): Promise<{ data: { request: AssetRequest } }> =>
+    api.post(`/itam/requests/${id}/cancel`),
+
+  requestAssetReturn: (id: number): Promise<{ data: { request: AssetRequest } }> =>
+    api.post(`/itam/requests/${id}/return`),
+
+  listAssetRequests: (params?: { page?: number; per_page?: number; status?: string; type?: string; location_id?: string; overdue?: string }): Promise<{ data: PaginatedAssetRequestsResponse }> =>
+    api.get('/itam/requests', { params }),
+
+  getAssetRequestBadge: (): Promise<{ data: AssetRequestBadge }> =>
+    api.get('/itam/requests/badge'),
+
+  approveAssetRequest: (id: number): Promise<{ data: { request: AssetRequest } }> =>
+    api.post(`/itam/requests/${id}/approve`),
+
+  rejectAssetRequest: (id: number, reason: string): Promise<{ data: { request: AssetRequest } }> =>
+    api.post(`/itam/requests/${id}/reject`, { reason }),
+
+  checkoutAssetRequest: (id: number): Promise<{ data: { request: AssetRequest } }> =>
+    api.post(`/itam/requests/${id}/checkout`),
+
+  confirmAssetReturn: (id: number, data?: { condition_id?: number; notes?: string }): Promise<{ data: { request: AssetRequest } }> =>
+    api.post(`/itam/requests/${id}/confirm-return`, data ?? {}),
+
+  fulfillAssetRequest: (id: number, assetId: number): Promise<{ data: { request: AssetRequest } }> =>
+    api.post(`/itam/requests/${id}/fulfill`, { asset_id: assetId }),
+
+  getNotificationPreferences: (): Promise<{ data: { preferences: NotificationPreference[] } }> =>
+    api.get('/settings/notifications'),
+
+  updateNotificationPreferences: (preferences: { event_key: string; email_enabled?: boolean; in_app_enabled?: boolean }[]): Promise<{ data: { preferences: NotificationPreference[] } }> =>
+    api.put('/settings/notifications', { preferences }),
 
   updateAsset: (id: number, data: UpdateAssetPayload): Promise<{ data: { asset: Asset } }> =>
     api.patch(`/itam/assets/${id}`, data),

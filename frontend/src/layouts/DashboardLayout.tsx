@@ -6,7 +6,7 @@ import { kbAPI } from '../services/kbAPI';
 import type { KBArticle } from '../types';
 import {
   LogOut, ChevronDown, BookOpen, BarChart3, Check, CheckCheck, User,
-  Activity, Ticket, Users, X, Menu, Search, Bell, Package, Settings2, ClipboardCheck
+  Activity, Ticket, Users, X, Menu, Search, Bell, Package, Settings2, ClipboardCheck, Inbox
 } from 'lucide-react';
 import { notificationAPI, ticketAPI } from '../services/api';
 import { itamAPI } from '../services/itamAPI';
@@ -22,18 +22,22 @@ type NavItem = {
   href: string;
   icon: typeof Activity;
   show?: (perms: ReturnType<typeof usePermissions>) => boolean;
+  badgeKey?: 'assetRequests';
 };
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: Activity },
   { label: 'Tickets', href: '/tickets', icon: Ticket },
+  { label: 'My Assets', href: '/my-assets', icon: Package },
   { label: 'Knowledge Base', href: '/knowledge', icon: BookOpen },
-  { label: 'Assets', href: '/itam', icon: Package, show: (p) => p.isStaff },
+  { label: 'Assets', href: '/itam', icon: Package, show: (p) => p.isStaff, badgeKey: 'assetRequests' },
+  { label: 'Asset Requests', href: '/itam/requests', icon: Inbox, show: (p) => p.isStaff, badgeKey: 'assetRequests' },
   { label: 'Site Inspections', href: '/itam/pm', icon: ClipboardCheck, show: (p) => p.isStaff },
   { label: 'Users', href: '/admin/users', icon: Users, show: (p) => p.canManageUsers },
   { label: 'Analytics', href: '/admin/analytics', icon: BarChart3, show: (p) => p.isFullAdmin },
   { label: 'Audit Logs', href: '/admin/audit-logs', icon: ClipboardCheck, show: (p) => p.isFullAdmin },
-  { label: 'Settings', href: '/admin/settings', icon: Settings2, show: (p) => p.canAccessSettings },
+  { label: 'Settings', href: '/settings', icon: Settings2 },
+  { label: 'Org Settings', href: '/admin/settings', icon: Settings2, show: (p) => p.canAccessSettings },
 ];
 
 export default function DashboardLayout() {
@@ -55,6 +59,8 @@ export default function DashboardLayout() {
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const location = useLocation();
 
+  const [assetRequestBadge, setAssetRequestBadge] = useState(0);
+
   useBodyScrollLock(mobileSearchOpen);
 
   useEffect(() => {
@@ -65,6 +71,24 @@ export default function DashboardLayout() {
       return () => clearInterval(interval);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !perms.isStaff) {
+      setAssetRequestBadge(0);
+      return;
+    }
+    const loadBadge = async () => {
+      try {
+        const res = await itamAPI.getAssetRequestBadge();
+        setAssetRequestBadge(res.data.total ?? 0);
+      } catch {
+        /* ignore */
+      }
+    };
+    loadBadge();
+    const interval = setInterval(loadBadge, 60000);
+    return () => clearInterval(interval);
+  }, [user, perms.isStaff]);
 
   const fetchNotifications = async () => {
     try {
@@ -224,18 +248,26 @@ export default function DashboardLayout() {
               if (location.pathname === item.href) return true;
               if (item.href === '/itam') {
                 return location.pathname === '/itam' ||
-                  (location.pathname.startsWith('/itam/') && !location.pathname.startsWith('/itam/pm'));
+                  (location.pathname.startsWith('/itam/') &&
+                    !location.pathname.startsWith('/itam/pm') &&
+                    !location.pathname.startsWith('/itam/requests'));
               }
               if (item.href !== '/') {
                 return location.pathname.startsWith(item.href + '/');
               }
               return false;
             })();
+            const badge = item.badgeKey === 'assetRequests' ? assetRequestBadge : 0;
             return (
               <Link key={item.href} to={item.href} onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium text-sm transition-all duration-150 ${isActive ? 'bg-primary/10 text-primary shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
                 <item.icon className="h-[18px] w-[18px]" />
-                <span>{item.label}</span>
+                <span className="flex-1">{item.label}</span>
+                {badge > 0 && (
+                  <span className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -450,6 +482,12 @@ export default function DashboardLayout() {
                     <div className="p-1 border-b border-border">
                       <Link to="/profile" onClick={() => setProfileOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-lg transition-colors">
                         <User className="h-4 w-4 text-muted-foreground" /><span>My Profile</span>
+                      </Link>
+                      <Link to="/settings" onClick={() => setProfileOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-lg transition-colors">
+                        <Settings2 className="h-4 w-4 text-muted-foreground" /><span>Settings</span>
+                      </Link>
+                      <Link to="/my-assets" onClick={() => setProfileOpen(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-muted rounded-lg transition-colors">
+                        <Package className="h-4 w-4 text-muted-foreground" /><span>My Assets</span>
                       </Link>
                     </div>
                     <div className="p-1">

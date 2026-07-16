@@ -524,13 +524,40 @@ func ListMyAssets(c *gin.Context) {
 		Offset(offset).Limit(perPage).
 		Find(&assets)
 
+	assetIDs := make([]uint, 0, len(assets))
+	for _, a := range assets {
+		assetIDs = append(assetIDs, a.ID)
+	}
+	metaByAsset := map[uint]models.AssetUserMeta{}
+	if len(assetIDs) > 0 {
+		var metas []models.AssetUserMeta
+		database.DB.Where("user_id = ? AND asset_id IN ?", userID, assetIDs).Find(&metas)
+		for _, m := range metas {
+			metaByAsset[m.AssetID] = m
+		}
+	}
+
+	type assetWithMeta struct {
+		models.Asset
+		UserMeta *models.AssetUserMeta `json:"user_meta,omitempty"`
+	}
+	out := make([]assetWithMeta, 0, len(assets))
+	for _, a := range assets {
+		item := assetWithMeta{Asset: a}
+		if m, ok := metaByAsset[a.ID]; ok {
+			mm := m
+			item.UserMeta = &mm
+		}
+		out = append(out, item)
+	}
+
 	totalPages := int(total) / perPage
 	if int(total)%perPage > 0 {
 		totalPages++
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"assets":      assets,
+		"assets":      out,
 		"total":       total,
 		"page":        page,
 		"per_page":    perPage,

@@ -52,6 +52,9 @@ func main() {
 		&models.PMCalibrationRecord{},
 		&models.PMChecklistItem{},
 		&models.PMFindingPhoto{},
+		&models.AssetRequest{},
+		&models.AssetUserMeta{},
+		&models.UserNotificationPreference{},
 	)
 	if err != nil {
 		log.Fatal("Failed to run database migrations:", err)
@@ -117,6 +120,10 @@ func main() {
 			notifications.PUT("/:id/read", handlers.MarkNotificationRead)
 			notifications.PUT("/read-all", handlers.MarkAllNotificationsRead)
 		}
+
+		// User settings / notification preferences
+		protected.GET("/settings/notifications", handlers.GetMyNotificationPreferences)
+		protected.PUT("/settings/notifications", handlers.UpdateMyNotificationPreferences)
 
 		// Ticket routes
 		tickets := protected.Group("/tickets")
@@ -189,6 +196,15 @@ func main() {
 			itam.PATCH("/assets/:id", handlers.UpdateAsset)
 			itam.DELETE("/assets/:id", handlers.DeleteAsset)
 
+			// Asset loan / assignment request queue
+			itam.GET("/requests", handlers.ListAssetRequests)
+			itam.GET("/requests/badge", handlers.GetAssetRequestBadge)
+			itam.POST("/requests/:id/approve", handlers.ApproveAssetRequest)
+			itam.POST("/requests/:id/reject", handlers.RejectAssetRequest)
+			itam.POST("/requests/:id/checkout", handlers.CheckoutAssetRequest)
+			itam.POST("/requests/:id/confirm-return", handlers.ConfirmAssetReturn)
+			itam.POST("/requests/:id/fulfill", handlers.FulfillAssetRequest)
+
 			// Preventive maintenance reports
 			itam.GET("/pm/reports", handlers.ListPMReports)
 			itam.POST("/pm/reports", handlers.CreatePMReport)
@@ -222,8 +238,20 @@ func main() {
 		staff.DELETE("/tickets/:id/assets/:assetId", handlers.UnlinkAssetFromTicket)
 	}
 
-	// ITAM - my assigned assets (all authenticated users)
+	// ITAM - employee self-service (all authenticated users)
 	protected.GET("/itam/my-assets", handlers.ListMyAssets)
+	protected.GET("/itam/my-assets/:id/meta", handlers.GetMyAssetMeta)
+	protected.PUT("/itam/my-assets/:id/meta", handlers.UpdateMyAssetMeta)
+	protected.POST("/itam/my-assets/:id/report-problem", handlers.ReportAssetProblem)
+	protected.GET("/itam/catalog", handlers.ListAvailableCatalog)
+	protected.GET("/itam/public/locations", handlers.ListPublicLocations)
+	protected.GET("/itam/public/categories", handlers.ListPublicCategories)
+	protected.GET("/itam/public/types", handlers.ListPublicTypes)
+	protected.POST("/itam/requests", handlers.SubmitAssetRequest)
+	protected.GET("/itam/requests/mine", handlers.ListMyAssetRequests)
+	protected.GET("/itam/requests/:id", handlers.GetAssetRequest)
+	protected.POST("/itam/requests/:id/cancel", handlers.CancelAssetRequest)
+	protected.POST("/itam/requests/:id/return", handlers.RequestAssetReturn)
 
 	// --- Full Admin Routes ---
 	admin := protected.Group("/admin")

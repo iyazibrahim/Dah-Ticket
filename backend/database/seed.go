@@ -183,6 +183,7 @@ func SeedITAMDefaults() {
 	seedStatuses := []models.AssetStatus{
 		{Name: "In Use", Description: "Assigned and in active use", IsActive: true},
 		{Name: "Available", Description: "Ready for assignment", IsActive: true},
+		{Name: "On Loan", Description: "Temporarily checked out to a borrower", IsActive: true},
 		{Name: "In Repair", Description: "Under maintenance", IsActive: true},
 		{Name: "Decommissioned", Description: "Retired from service", IsActive: true},
 	}
