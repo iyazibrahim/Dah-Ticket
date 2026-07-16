@@ -18,6 +18,8 @@ import RoleProtectedRoute from './components/RoleProtectedRoute';
 import MyAssetsPage from './pages/my-assets/MyAssetsPage';
 import AssetRequestsPage from './pages/itam/AssetRequestsPage';
 import UserSettingsPage from './pages/settings/UserSettingsPage';
+import AccountSettingsPage from './pages/settings/AccountSettingsPage';
+import NotificationSettingsPage from './pages/settings/NotificationSettingsPage';
 import ProfilePage from './pages/auth/ProfilePage';
 import ITAMDashboard from './pages/itam/ITAMDashboard';
 import AssetListPage from './pages/itam/AssetListPage';
@@ -63,6 +65,8 @@ function App() {
               />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/settings" element={<UserSettingsPage />} />
+              <Route path="/settings/account" element={<AccountSettingsPage />} />
+              <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
               <Route path="/my-assets" element={<MyAssetsPage />} />
               <Route path="/admin/users" element={<RoleProtectedRoute guard="fullAdmin"><UsersPage /></RoleProtectedRoute>} />
               <Route path="/admin/analytics" element={<RoleProtectedRoute guard="fullAdmin"><AnalyticsPage /></RoleProtectedRoute>} />
