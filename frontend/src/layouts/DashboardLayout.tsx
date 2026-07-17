@@ -37,7 +37,6 @@ const navItems: NavItem[] = [
   { label: 'Analytics', href: '/admin/analytics', icon: BarChart3, show: (p) => p.isFullAdmin },
   { label: 'Audit Logs', href: '/admin/audit-logs', icon: ClipboardCheck, show: (p) => p.isFullAdmin },
   { label: 'Settings', href: '/settings', icon: Settings2 },
-  { label: 'Org Settings', href: '/admin/settings', icon: Settings2, show: (p) => p.canAccessSettings },
 ];
 
 export default function DashboardLayout() {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, AlertTriangle, Loader2, User, Lock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { authAPI } from '../../services/api';
@@ -10,10 +10,10 @@ export default function AccountSettingsPage() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const [profileForm, setProfileForm] = useState({
+  const [profileForm, setProfileForm] = useState(() => ({
     first_name: user?.first_name || '',
     last_name: user?.last_name || '',
-  });
+  }));
   const [passwordForm, setPasswordForm] = useState({
     old_password: '',
     new_password: '',
@@ -24,13 +24,6 @@ export default function AccountSettingsPage() {
     setFeedback({ type, message });
     setTimeout(() => setFeedback(null), 4000);
   };
-
-  useEffect(() => {
-    setProfileForm({
-      first_name: user?.first_name || '',
-      last_name: user?.last_name || '',
-    });
-  }, [user]);
 
   const saveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
