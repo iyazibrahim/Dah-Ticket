@@ -37,10 +37,12 @@ Compose uses `${VAR}` so Dokploy’s `.env` values are injected into containers.
 
 ### Common mistakes
 
+- **Changing `PORT` to 8085 (or anything else)** — backend must stay on **8080** inside the network. Nginx proxies `/api` → `backend:8080` and the healthcheck hits `:8080`. Public traffic is on **frontend:80** via your Dokploy domain — you do not need to change `PORT`.
 - **Hardcoded env in compose** — prod compose uses `${VAR}`; set values in Dokploy Environment.
 - **`VITE_API_URL=http://localhost:8080/api`** — wrong for production; browsers cannot reach server localhost.
 - **DB password changed after first deploy** — Postgres only reads `POSTGRES_PASSWORD` on first volume init.
 - **Exposing db/backend ports** — prod compose keeps them internal; only frontend joins `dokploy-network`.
+- **Gin “trusted all proxies” warning** — informational behind Dokploy/Traefik; not the cause of unhealthy.
 
 ### After deploy
 

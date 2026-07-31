@@ -36,7 +36,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      PORT: ${PORT:-8080}
+      # Internal only — must stay 8080 (nginx + healthcheck). Do not map host ports.
+      PORT: "8080"
       DB_HOST: db
       DB_PORT: ${DB_PORT:-5432}
       DB_USER: ${DB_USER}
