@@ -1,14 +1,20 @@
-# Production / Dokploy deployment
+# Production / Dokploy + Traefik
 #
 # Usage:
 #   cp .env.production.example .env
 #   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 #
 # Dokploy:
-#   1. Use this compose file
-#   2. Set variables in Environment panel (written to .env next to compose)
-#   3. Assign your domain to the frontend service, port 80
-#   4. dokploy-network is created by Dokploy automatically
+#   1. Create a Docker Compose service pointing at this file
+#   2. Set Environment vars from .env.production.example
+#   3. Domains tab → add domain → Service: frontend, Port: 80
+#      (Dokploy injects Traefik Host/TLS labels automatically)
+#   4. Redeploy after any domain change
+#
+# Networking:
+#   - Traefik reaches only `frontend` via dokploy-network
+#   - `frontend` → `backend` → `db` on private `internal` network
+#   - Public path: Traefik → frontend:80 → /api proxied to backend:8080
 
 name: dahticket-prod
 
@@ -36,7 +42,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      # Internal only — must stay 8080 (nginx + healthcheck). Do not map host ports.
+      # Must stay 8080 — nginx + healthcheck target this port. Not published to the host.
       PORT: "8080"
       DB_HOST: db
       DB_PORT: ${DB_PORT:-5432}
@@ -65,6 +71,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    expose:
+      - "8080"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/health || exit 1"]
       interval: 30s
@@ -84,6 +92,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    # Traefik / Dokploy Domains must target this container port
     expose:
       - "80"
     healthcheck:
@@ -95,11 +104,17 @@ services:
     networks:
       - internal
       - dokploy-network
+    # When the container is on multiple networks, Traefik must use dokploy-network.
+    # Host/TLS/router labels are injected by Dokploy Domains UI — do not hardcode them here.
+    labels:
+      - traefik.docker.network=dokploy-network
     restart: unless-stopped
 
 networks:
+  # App mesh — not attached to Traefik (only frontend joins dokploy-network)
   internal:
     driver: bridge
+  # Shared with Dokploy Traefik
   dokploy-network:
     external: true
 

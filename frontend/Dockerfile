@@ -21,6 +21,8 @@ RUN npm run build
 # Run stage (Production server)
 FROM nginx:alpine
 
+RUN apk add --no-cache wget
+
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf

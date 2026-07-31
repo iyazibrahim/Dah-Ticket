@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"dahticket-backend/config"
@@ -76,9 +77,27 @@ func main() {
 	// Initialize Gin router
 	r := gin.Default()
 
+	// Trust Docker / Traefik private networks for X-Forwarded-* (Dokploy)
+	_ = r.SetTrustedProxies([]string{
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"127.0.0.1",
+		"::1",
+	})
+
+	allowOrigins := []string{
+		"http://localhost:5173",
+		"http://localhost:3000",
+		"http://frontend:80",
+	}
+	if frontendURL := strings.TrimRight(strings.TrimSpace(os.Getenv("FRONTEND_URL")), "/"); frontendURL != "" {
+		allowOrigins = append(allowOrigins, frontendURL)
+	}
+
 	// CORS configuration — allow frontend requests
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://frontend:80"},
+		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
