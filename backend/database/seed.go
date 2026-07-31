@@ -84,11 +84,21 @@ func MigrateUserRoles() {
 }
 
 // SeedDefaultAdmin creates the Super Admin user if one does not exist.
+// Set ADMIN_FORCE_PASSWORD=true to reset the seed admin password from ADMIN_PASSWORD
+// (useful when env was changed after the first boot). Turn it off after logging in.
 func SeedDefaultAdmin() {
 	MigrateUserRoles()
 
 	email := adminSeedEmail()
 	password := adminSeedPassword()
+
+	if envBool("ADMIN_FORCE_PASSWORD", false) {
+		if err := forceResetAdminPassword(email, password); err != nil {
+			log.Printf("ADMIN_FORCE_PASSWORD failed: %v", err)
+		} else {
+			log.Printf("ADMIN_FORCE_PASSWORD applied for %s — set ADMIN_FORCE_PASSWORD=false after login", email)
+		}
+	}
 
 	var count int64
 	DB.Model(&models.User{}).Where("is_super_admin = ?", true).Count(&count)
@@ -135,6 +145,33 @@ func SeedDefaultAdmin() {
 	}
 
 	log.Printf("Super Admin seeded: %s (password from ADMIN_PASSWORD / default)", email)
+}
+
+func forceResetAdminPassword(email, password string) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	var user models.User
+	if err := DB.Where("LOWER(email) = LOWER(?)", email).First(&user).Error; err != nil {
+		// Fall back to any existing super admin (e.g. legacy email)
+		if err := DB.Where("is_super_admin = ?", true).Order("id asc").First(&user).Error; err != nil {
+			return err
+		}
+		user.Email = email
+	}
+
+	user.Password = string(hashedPassword)
+	user.Role = models.RoleManager
+	user.IsAdmin = true
+	user.IsSuperAdmin = true
+	user.IsActive = true
+	if user.OrganizationID == 0 {
+		user.OrganizationID = 1
+	}
+
+	return DB.Save(&user).Error
 }
 
 // SeedDefaultUsers creates default employee and IT agent accounts if they do not exist.
