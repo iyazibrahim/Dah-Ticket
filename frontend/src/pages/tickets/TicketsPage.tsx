@@ -14,6 +14,7 @@ import PageContainer from '../../components/PageContainer';
 import type { Ticket, User } from '../../types';
 import type { Location } from '../../types/itam';
 import { Loader2, Plus, Search, ChevronLeft, ChevronRight, Filter, Ticket as TicketIcon, CheckCircle2 } from 'lucide-react';
+import { getSLAHealth, slaHealthClass, slaHealthLabel } from '../../lib/formatDate';
 
 const PER_PAGE_OPTIONS = [10, 15, 25] as const;
 
@@ -357,7 +358,21 @@ export default function TicketsPage() {
                       />
                     </div>
                     <div className={`col-span-1 text-sm font-medium capitalize ${priorityColors[ticket.priority]}`}>{ticket.priority}</div>
-                    <div className="col-span-2 text-sm text-muted-foreground truncate">{ticket.requester?.first_name} {ticket.requester?.last_name}</div>
+                    <div className="col-span-2 text-sm text-muted-foreground truncate">
+                      <span>{ticket.requester?.first_name} {ticket.requester?.last_name}</span>
+                      {(() => {
+                        const health = getSLAHealth(ticket.due_date, ticket.created_at, {
+                          slaPausedAt: ticket.sla_paused_at,
+                          status: ticket.status,
+                        });
+                        if (health === 'none' || health === 'on_track') return null;
+                        return (
+                          <span className={`ml-2 inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${slaHealthClass(health)}`}>
+                            {slaHealthLabel(health)}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <div className="col-span-1 text-sm text-muted-foreground">{timeAgo(ticket.created_at)}</div>
                     <div className="col-span-2">{renderActions(ticket)}</div>
                   </div>
@@ -371,6 +386,18 @@ export default function TicketsPage() {
                         size="xs"
                       />
                       <span className={`text-xs font-medium capitalize ${priorityColors[ticket.priority]}`}>{ticket.priority}</span>
+                      {(() => {
+                        const health = getSLAHealth(ticket.due_date, ticket.created_at, {
+                          slaPausedAt: ticket.sla_paused_at,
+                          status: ticket.status,
+                        });
+                        if (health === 'none' || health === 'on_track') return null;
+                        return (
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${slaHealthClass(health)}`}>
+                            {slaHealthLabel(health)}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <p className="text-sm font-medium text-foreground">{ticket.title}</p>
                     <p className="text-xs text-muted-foreground mt-1">{ticket.requester?.first_name} {ticket.requester?.last_name} · {timeAgo(ticket.created_at)}</p>

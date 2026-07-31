@@ -17,7 +17,7 @@ interface StatusBreakdown { status: string; count: number; }
 interface PriorityBreakdown { priority: string; count: number; }
 interface AgentWorkload { agent_id: number; first_name: string; last_name: string; open: number; resolved: number; total: number; }
 interface DailyTrend { date: string; created: number; }
-interface SLAStats { total_resolved: number; on_time: number; breached: number; currently_overdue: number; compliance_rate: number; }
+interface SLAStats { total_resolved: number; on_time: number; breached: number; currently_overdue: number; currently_at_risk: number; compliance_rate: number; }
 
 export default function AnalyticsPage() {
   const [overview, setOverview] = useState<OverviewStats | null>(null);
@@ -163,7 +163,8 @@ export default function AnalyticsPage() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">On Time</span><span className="text-emerald-600 font-medium">{sla.on_time}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Breached</span><span className="text-red-600 font-medium">{sla.breached}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Currently Overdue</span><span className="text-amber-600 font-medium">{sla.currently_overdue}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">At Risk</span><span className="text-amber-600 font-medium">{sla.currently_at_risk ?? 0}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Currently Overdue</span><span className="text-red-600 font-medium">{sla.currently_overdue}</span></div>
             </div>
           </div>
         )}

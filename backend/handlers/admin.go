@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"dahticket-backend/database"
 	"dahticket-backend/middleware"
 	"dahticket-backend/models"
+	"dahticket-backend/services"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -17,7 +19,8 @@ type AdminCreateUserRequest struct {
 	FirstName         string `json:"first_name" binding:"required,min=2,max=100"`
 	LastName          string `json:"last_name" binding:"required,min=2,max=100"`
 	Email             string `json:"email" binding:"required,email"`
-	Password          string `json:"password" binding:"required,min=8"`
+	Password          string `json:"password" binding:"omitempty,min=8"`
+	PasswordMode      string `json:"password_mode" binding:"omitempty,oneof=manual auto"`
 	Role              string `json:"role" binding:"required,oneof=employee it_agent manager"`
 	IsAdmin           bool   `json:"is_admin"`
 	PrimaryLocationID *uint  `json:"primary_location_id"`
@@ -31,6 +34,7 @@ type AdminUpdateUserRequest struct {
 	IsAdmin           *bool   `json:"is_admin"`
 	IsActive          *bool   `json:"is_active"`
 	Password          *string `json:"password" binding:"omitempty,min=8"`
+	PasswordMode      *string `json:"password_mode" binding:"omitempty,oneof=manual auto"`
 	PrimaryLocationID **uint  `json:"primary_location_id"`
 }
 
@@ -155,21 +159,52 @@ func AdminCreateUser(c *gin.Context) {
 		return
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	mode := strings.ToLower(strings.TrimSpace(req.PasswordMode))
+	if mode == "" {
+		if strings.TrimSpace(req.Password) == "" {
+			mode = "auto"
+		} else {
+			mode = "manual"
+		}
+	}
+
+	plainPassword := strings.TrimSpace(req.Password)
+	mustChange := false
+	if mode == "auto" {
+		generated, err := services.GenerateTemporaryPassword()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate password"})
+			return
+		}
+		plainPassword = generated
+		mustChange = true
+	} else if plainPassword == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for manual mode"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process password"})
 		return
 	}
 
+	orgID := actor.OrganizationID
+	if orgID == 0 {
+		orgID = 1
+	}
+
 	user := models.User{
-		FirstName:         req.FirstName,
-		LastName:          req.LastName,
-		Email:             req.Email,
-		Password:          string(hashedPassword),
-		Role:              models.Role(req.Role),
-		IsAdmin:           req.IsAdmin,
-		IsActive:          true,
-		PrimaryLocationID: req.PrimaryLocationID,
+		FirstName:          req.FirstName,
+		LastName:           req.LastName,
+		Email:              req.Email,
+		Password:           string(hashedPassword),
+		MustChangePassword: mustChange,
+		Role:               models.Role(req.Role),
+		IsAdmin:            req.IsAdmin,
+		IsActive:           true,
+		OrganizationID:     orgID,
+		PrimaryLocationID:  req.PrimaryLocationID,
 	}
 
 	if req.PrimaryLocationID != nil {
@@ -186,10 +221,16 @@ func AdminCreateUser(c *gin.Context) {
 	}
 
 	LogAudit(c, models.AuditActionCreate, "user", user.ID, "",
-		ToJSON(map[string]interface{}{"email": user.Email, "role": user.Role, "is_admin": user.IsAdmin}),
+		ToJSON(map[string]interface{}{"email": user.Email, "role": user.Role, "is_admin": user.IsAdmin, "password_mode": mode}),
 		fmt.Sprintf("Admin created user: %s (%s)", user.Email, user.Role))
 
-	c.JSON(http.StatusCreated, gin.H{"user": toUserResponse(user)})
+	services.NotifyUserWelcome(orgID, user.Email, user.FirstName, plainPassword, mustChange)
+
+	c.JSON(http.StatusCreated, gin.H{
+		"user":               toUserResponse(user),
+		"temporary_password": plainPassword,
+		"password_emailed":   services.IsEmailChannelEnabled(),
+	})
 }
 
 // AdminUpdateUser updates a user's profile, role, or active status.
@@ -299,14 +340,59 @@ func AdminUpdateUser(c *gin.Context) {
 			changes = append(changes, fmt.Sprintf("primary location set to %s", loc.Name))
 		}
 	}
-	if req.Password != nil {
-		hashed, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
+	if req.Password != nil || (req.PasswordMode != nil && strings.ToLower(strings.TrimSpace(*req.PasswordMode)) == "auto") {
+		mode := "manual"
+		if req.PasswordMode != nil && strings.TrimSpace(*req.PasswordMode) != "" {
+			mode = strings.ToLower(strings.TrimSpace(*req.PasswordMode))
+		}
+		plainPassword := ""
+		if req.Password != nil {
+			plainPassword = strings.TrimSpace(*req.Password)
+		}
+		if mode == "auto" {
+			generated, err := services.GenerateTemporaryPassword()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate password"})
+				return
+			}
+			plainPassword = generated
+		} else if plainPassword == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required for manual reset"})
+			return
+		}
+
+		hashed, err := bcrypt.GenerateFromPassword([]byte(plainPassword), bcrypt.DefaultCost)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process password"})
 			return
 		}
 		changes = append(changes, "password reset")
 		user.Password = string(hashed)
+		user.MustChangePassword = true
+
+		if err := database.DB.Save(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return
+		}
+
+		newValues := map[string]interface{}{
+			"first_name": user.FirstName, "last_name": user.LastName,
+			"email": user.Email, "role": user.Role, "is_active": user.IsActive,
+			"is_admin": user.IsAdmin, "primary_location_id": user.PrimaryLocationID,
+		}
+
+		LogAudit(c, models.AuditActionUpdate, "user", user.ID,
+			ToJSON(oldValues), ToJSON(newValues),
+			fmt.Sprintf("Admin updated user %s: %s", user.Email, joinChanges(changes)))
+
+		services.NotifyPasswordReset(user.OrganizationID, user.Email, user.FirstName, plainPassword)
+
+		c.JSON(http.StatusOK, gin.H{
+			"user":               toUserResponse(user),
+			"temporary_password": plainPassword,
+			"password_emailed":   services.IsEmailChannelEnabled(),
+		})
+		return
 	}
 
 	if err := database.DB.Save(&user).Error; err != nil {

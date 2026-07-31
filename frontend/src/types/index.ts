@@ -9,6 +9,7 @@ export interface User {
   is_admin: boolean;
   is_super_admin: boolean;
   is_active: boolean;
+  must_change_password?: boolean;
   organization_id?: number;
   primary_location_id?: number | null;
   created_at: string;

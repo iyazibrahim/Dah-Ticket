@@ -68,6 +68,10 @@ type AssetRequest struct {
 	CheckedOutAt *time.Time `json:"checked_out_at"`
 	ReturnedAt   *time.Time `json:"returned_at"`
 
+	// Reminder dedupe — each stage emailed/notified at most once
+	DueSoonNotifiedAt  *time.Time `json:"due_soon_notified_at,omitempty"`
+	OverdueNotifiedAt  *time.Time `json:"overdue_notified_at,omitempty"`
+
 	ConditionOnReturnID *uint           `json:"condition_on_return_id"`
 	ConditionOnReturn   *AssetCondition `gorm:"foreignKey:ConditionOnReturnID" json:"condition_on_return,omitempty"`
 

@@ -58,6 +58,64 @@ func GetSLADueDate(priority string, createdAt time.Time) time.Time {
 	return createdAt.Add(time.Duration(hours) * time.Hour)
 }
 
+// SLAWarningPercent is the fraction of the SLA window remaining that counts as "at risk" (default 20%).
+func SLAWarningPercent() int {
+	pct := getEnvAsInt("SLA_WARNING_PERCENT", 20)
+	if pct < 1 {
+		pct = 1
+	}
+	if pct > 90 {
+		pct = 90
+	}
+	return pct
+}
+
+// LoanDueWarningHours is how far before due_at a loan is considered "due soon".
+func LoanDueWarningHours() int {
+	h := getEnvAsInt("LOAN_DUE_WARNING_HOURS", 24)
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// SLAHealth values for open tickets.
+const (
+	SLAHealthNone     = "none"
+	SLAHealthOnTrack  = "on_track"
+	SLAHealthAtRisk   = "at_risk"
+	SLAHealthOverdue  = "overdue"
+	SLAHealthPaused   = "paused"
+)
+
+// GetSLAHealthClassifies an open ticket's SLA state from due date and pause flag.
+// createdAt is used to compute the warning threshold (last N% of the SLA window).
+func GetSLAHealth(dueDate *time.Time, createdAt time.Time, slaPausedAt *time.Time, status string, now time.Time) string {
+	if dueDate == nil {
+		return SLAHealthNone
+	}
+	if status == "resolved" || status == "closed" {
+		return SLAHealthNone
+	}
+	if slaPausedAt != nil {
+		return SLAHealthPaused
+	}
+	if !now.Before(*dueDate) {
+		return SLAHealthOverdue
+	}
+
+	total := dueDate.Sub(createdAt)
+	if total <= 0 {
+		return SLAHealthOverdue
+	}
+	warnFraction := float64(SLAWarningPercent()) / 100.0
+	warnAt := dueDate.Add(-time.Duration(float64(total) * warnFraction))
+	if !now.Before(warnAt) {
+		return SLAHealthAtRisk
+	}
+	return SLAHealthOnTrack
+}
+
 // SetSLATargets updates SLA targets at runtime.
 func SetSLATargets(low, medium, high, critical int) {
 	if low > 0 {

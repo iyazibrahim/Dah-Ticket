@@ -36,23 +36,29 @@ type UpdateMeRequest struct {
 	NewPassword *string `json:"new_password" binding:"omitempty,min=8"`
 }
 
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}
+
 type AuthResponse struct {
 	Token string       `json:"token"`
 	User  UserResponse `json:"user"`
 }
 
 type UserResponse struct {
-	ID                uint        `json:"id"`
-	FirstName         string      `json:"first_name"`
-	LastName          string      `json:"last_name"`
-	Email             string      `json:"email"`
-	Role              models.Role `json:"role"`
-	IsAdmin           bool        `json:"is_admin"`
-	IsSuperAdmin      bool        `json:"is_super_admin"`
-	IsActive          bool        `json:"is_active"`
-	OrganizationID    uint        `json:"organization_id"`
-	PrimaryLocationID *uint       `json:"primary_location_id,omitempty"`
-	CreatedAt         time.Time   `json:"created_at"`
+	ID                 uint        `json:"id"`
+	FirstName          string      `json:"first_name"`
+	LastName           string      `json:"last_name"`
+	Email              string      `json:"email"`
+	Role               models.Role `json:"role"`
+	IsAdmin            bool        `json:"is_admin"`
+	IsSuperAdmin       bool        `json:"is_super_admin"`
+	IsActive           bool        `json:"is_active"`
+	MustChangePassword bool        `json:"must_change_password"`
+	OrganizationID     uint        `json:"organization_id"`
+	PrimaryLocationID  *uint       `json:"primary_location_id,omitempty"`
+	CreatedAt          time.Time   `json:"created_at"`
 }
 
 // --- Handlers ---
@@ -194,12 +200,12 @@ func UpdateMe(c *gin.Context) {
 
 	// Handle password change if requested
 	if req.NewPassword != nil && *req.NewPassword != "" {
-		if req.OldPassword == nil || *req.OldPassword == "" {
+		if user.MustChangePassword {
+			// Force-change flow: old password not required
+		} else if req.OldPassword == nil || *req.OldPassword == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Old password is required to change password"})
 			return
-		}
-
-		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(*req.OldPassword)); err != nil {
+		} else if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(*req.OldPassword)); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect old password"})
 			return
 		}
@@ -210,6 +216,7 @@ func UpdateMe(c *gin.Context) {
 			return
 		}
 		user.Password = string(hashedPassword)
+		user.MustChangePassword = false
 	}
 
 	if err := database.DB.Save(&user).Error; err != nil {
@@ -218,6 +225,50 @@ func UpdateMe(c *gin.Context) {
 	}
 
 	LogAudit(c, models.AuditActionUpdate, "user", user.ID, "", "", "User updated their profile")
+
+	c.JSON(http.StatusOK, gin.H{"user": toUserResponse(user)})
+}
+
+// ChangePassword updates the password; skips old-password check when must_change_password is set.
+func ChangePassword(c *gin.Context) {
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID := c.MustGet("userID").(uint)
+	var user models.User
+	if err := database.DB.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		return
+	}
+
+	if !user.MustChangePassword {
+		if req.OldPassword == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Old password is required to change password"})
+			return
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.OldPassword)); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect old password"})
+			return
+		}
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process password"})
+		return
+	}
+	user.Password = string(hashedPassword)
+	user.MustChangePassword = false
+
+	if err := database.DB.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
+		return
+	}
+
+	LogAudit(c, models.AuditActionUpdate, "user", user.ID, "", "", "User changed password")
 
 	c.JSON(http.StatusOK, gin.H{"user": toUserResponse(user)})
 }
@@ -245,16 +296,17 @@ func generateToken(user models.User) (string, error) {
 
 func toUserResponse(user models.User) UserResponse {
 	return UserResponse{
-		ID:                user.ID,
-		FirstName:         user.FirstName,
-		LastName:          user.LastName,
-		Email:             user.Email,
-		Role:              user.Role,
-		IsAdmin:           user.IsAdmin,
-		IsSuperAdmin:      user.IsSuperAdmin,
-		IsActive:          user.IsActive,
-		OrganizationID:    user.OrganizationID,
-		PrimaryLocationID: user.PrimaryLocationID,
-		CreatedAt:         user.CreatedAt,
+		ID:                 user.ID,
+		FirstName:          user.FirstName,
+		LastName:           user.LastName,
+		Email:              user.Email,
+		Role:               user.Role,
+		IsAdmin:            user.IsAdmin,
+		IsSuperAdmin:       user.IsSuperAdmin,
+		IsActive:           user.IsActive,
+		MustChangePassword: user.MustChangePassword,
+		OrganizationID:     user.OrganizationID,
+		PrimaryLocationID:  user.PrimaryLocationID,
+		CreatedAt:          user.CreatedAt,
 	}
 }

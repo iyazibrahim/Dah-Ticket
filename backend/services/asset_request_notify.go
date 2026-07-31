@@ -80,16 +80,15 @@ func DispatchAssetRequestCreated(orgID uint, ar models.AssetRequest) {
 			if err == nil && settings.EmailEnabled && u.Email != "" {
 				subject := fmt.Sprintf("[%s] New asset %s request #%d", config.ProductName, reqType, ar.ID)
 				cta := FrontendBaseURL() + link
-				body := buildEmailTemplateWithCTA(
-					"Asset Request",
+				sendTemplatedEmail(
+					[]string{u.Email}, subject,
+					"Asset Request", "Asset Request",
 					fmt.Sprintf("Hi %s,", u.FirstName),
 					fmt.Sprintf("A new <strong>%s</strong> request <strong>#%d</strong> is waiting for review.", reqType, ar.ID),
 					fmt.Sprintf("<strong>Reason:</strong> %s", ar.Reason),
 					"Review and approve or reject in Asset Requests.",
-					"Open requests",
-					cta,
+					"Open requests", cta,
 				)
-				SendEmail([]string{u.Email}, subject, body)
 			}
 		}
 	}
@@ -129,14 +128,13 @@ func DispatchAssetRequestStatusChanged(orgID uint, ar models.AssetRequest, actio
 	if ar.RejectReason != "" {
 		detail += "<br><strong>Reason:</strong> " + ar.RejectReason
 	}
-	body := buildEmailTemplateWithCTA(
-		"Asset Request Update",
+	sendTemplatedEmail(
+		[]string{requester.Email}, subject,
+		"Asset Update", "Asset Request Update",
 		fmt.Sprintf("Hi %s,", requester.FirstName),
 		fmt.Sprintf("Your asset request <strong>#%d</strong> was <strong>%s</strong>.", ar.ID, action),
 		detail,
 		"",
-		"View my assets",
-		cta,
+		"View my assets", cta,
 	)
-	SendEmail([]string{requester.Email}, subject, body)
 }

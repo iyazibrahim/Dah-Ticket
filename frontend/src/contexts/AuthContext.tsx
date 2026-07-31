@@ -12,9 +12,10 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (data: { first_name: string; last_name: string; email: string; password: string }) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
+  register: (data: { first_name: string; last_name: string; email: string; password: string }) => Promise<User>;
   logout: () => void;
+  refreshUser: () => Promise<User | null>;
   isAuthenticated: boolean;
 }
 
@@ -39,7 +40,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(response.data.user);
         setToken(storedToken);
       } catch {
-        // Token is invalid — clear it
         clearAuthStorage();
         setToken(null);
         setUser(null);
@@ -59,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthUserRaw(JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
+    return newUser as User;
   };
 
   const register = async (data: { first_name: string; last_name: string; email: string; password: string }) => {
@@ -69,6 +70,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthUserRaw(JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
+    return newUser as User;
+  };
+
+  const refreshUser = async () => {
+    try {
+      const response = await authAPI.getMe();
+      const next = response.data.user as User;
+      setUser(next);
+      setAuthUserRaw(JSON.stringify(next));
+      return next;
+    } catch {
+      return null;
+    }
   };
 
   const logout = () => {
@@ -86,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        refreshUser,
         isAuthenticated: !!token && !!user,
       }}
     >

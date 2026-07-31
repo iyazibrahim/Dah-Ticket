@@ -87,8 +87,18 @@ func isEmailChannelEnabled() bool {
 	return false
 }
 
+// IsEmailChannelEnabled reports whether SMTP delivery is currently active.
+func IsEmailChannelEnabled() bool {
+	return isEmailChannelEnabled()
+}
+
 // SendEmail sends an email via SMTP. Runs asynchronously — does not block the caller.
 func SendEmail(to []string, subject, htmlBody string) {
+	SendEmailWithPlain(to, subject, htmlBody, "")
+}
+
+// SendEmailWithPlain sends multipart HTML + plain text when plainBody is non-empty.
+func SendEmailWithPlain(to []string, subject, htmlBody, plainBody string) {
 	if !isEmailChannelEnabled() {
 		log.Printf("[EMAIL SKIPPED] To: %s | Subject: %s", strings.Join(to, ", "), subject)
 		return
@@ -101,16 +111,31 @@ func SendEmail(to []string, subject, htmlBody string) {
 	go func() {
 		auth := smtp.PlainAuth("", emailConfig.Username, emailConfig.Password, emailConfig.Host)
 
+		var msg []byte
 		headers := fmt.Sprintf("From: %s <%s>\r\n", emailConfig.FromName, emailConfig.FromAddr)
 		headers += fmt.Sprintf("To: %s\r\n", strings.Join(to, ", "))
 		headers += fmt.Sprintf("Subject: %s\r\n", subject)
 		headers += "MIME-Version: 1.0\r\n"
-		headers += "Content-Type: text/html; charset=\"UTF-8\"\r\n"
-		headers += "\r\n"
 
-		msg := []byte(headers + htmlBody)
+		if strings.TrimSpace(plainBody) != "" {
+			boundary := "digidesk-boundary-7a3f9c"
+			headers += fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n\r\n", boundary)
+			var b strings.Builder
+			b.WriteString(headers)
+			b.WriteString("--" + boundary + "\r\n")
+			b.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n")
+			b.WriteString(plainBody)
+			b.WriteString("\r\n--" + boundary + "\r\n")
+			b.WriteString("Content-Type: text/html; charset=\"UTF-8\"\r\n\r\n")
+			b.WriteString(htmlBody)
+			b.WriteString("\r\n--" + boundary + "--")
+			msg = []byte(b.String())
+		} else {
+			headers += "Content-Type: text/html; charset=\"UTF-8\"\r\n\r\n"
+			msg = []byte(headers + htmlBody)
+		}
+
 		addr := fmt.Sprintf("%s:%s", emailConfig.Host, emailConfig.Port)
-
 		if err := smtp.SendMail(addr, auth, emailConfig.FromAddr, to, msg); err != nil {
 			log.Printf("[EMAIL ERROR] Failed to send to %s: %v", strings.Join(to, ", "), err)
 		} else {
@@ -163,15 +188,29 @@ func NotifyHQSiteTicketCreated(orgID uint, ticketID uint, ticketTitle, siteName,
 	DispatchHQSiteTicketCreated(orgID, ticketID, ticketTitle, siteName, requesterName)
 }
 
-// buildEmailTemplate creates a clean, branded HTML email.
-func buildEmailTemplate(heading, greeting, mainText, details, footer string) string {
-	return buildEmailTemplateWithCTA(heading, greeting, mainText, details, footer, "", "")
+// NotifyUserWelcome emails credentials after admin creates an account.
+func NotifyUserWelcome(orgID uint, email, firstName, temporaryPassword string, mustChange bool) {
+	DispatchUserWelcome(orgID, email, firstName, temporaryPassword, mustChange)
 }
 
-// buildEmailTemplateWithCTA creates branded HTML with an optional primary CTA button.
-func buildEmailTemplateWithCTA(heading, greeting, mainText, details, footer, ctaLabel, ctaURL string) string {
+// NotifyPasswordReset emails a temporary password after admin reset.
+func NotifyPasswordReset(orgID uint, email, firstName, temporaryPassword string) {
+	DispatchPasswordReset(orgID, email, firstName, temporaryPassword)
+}
+
+// buildEmailTemplate creates a clean, branded HTML email.
+func buildEmailTemplate(emailType, heading, greeting, mainText, details, footer string) string {
+	return buildEmailTemplateWithCTA(emailType, heading, greeting, mainText, details, footer, "", "")
+}
+
+// buildEmailTemplateWithCTA creates branded HTML with logo, type badge, and optional CTA.
+func buildEmailTemplateWithCTA(emailType, heading, greeting, mainText, details, footer, ctaLabel, ctaURL string) string {
 	product := config.ProductName
-	accent := "#0f766e" // teal aligned with practical IT tools (not purple gradient)
+	accent := "#0f766e"
+	logoURL := FrontendBaseURL() + "/digidesk-logo.png"
+	if emailType == "" {
+		emailType = "Notification"
+	}
 
 	footerHTML := ""
 	if footer != "" {
@@ -207,18 +246,27 @@ func buildEmailTemplateWithCTA(heading, greeting, mainText, details, footer, cta
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>%s</title>
 </head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:Georgia,'Times New Roman',serif;">
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 	<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:32px 12px;">
 		<tr><td align="center">
 			<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
 				<tr>
-					<td style="padding:22px 28px;background:#0f172a;border-bottom:3px solid %s;">
-						<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#94a3b8;">%s</p>
-						<h1 style="margin:6px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:650;color:#f8fafc;line-height:1.3;">%s</h1>
+					<td style="padding:20px 28px;background:#0f172a;border-bottom:3px solid %s;">
+						<table role="presentation" width="100%%" cellspacing="0" cellpadding="0">
+							<tr>
+								<td>
+									<img src="%s" alt="%s" width="140" style="display:block;max-width:140px;height:auto;border:0;" />
+								</td>
+								<td align="right" style="vertical-align:middle;">
+									<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:rgba(15,118,110,0.25);border:1px solid %s;font-size:11px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#99f6e4;">%s</span>
+								</td>
+							</tr>
+						</table>
+						<h1 style="margin:16px 0 0;font-size:20px;font-weight:650;color:#f8fafc;line-height:1.3;">%s</h1>
 					</td>
 				</tr>
 				<tr>
-					<td style="padding:28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+					<td style="padding:28px;">
 						<p style="margin:0 0 12px;font-size:15px;color:#334155;line-height:1.5;">%s</p>
 						<p style="margin:0;font-size:15px;color:#334155;line-height:1.55;">%s</p>
 						%s
@@ -228,7 +276,7 @@ func buildEmailTemplateWithCTA(heading, greeting, mainText, details, footer, cta
 				</tr>
 				<tr>
 					<td style="padding:16px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-						<p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;color:#94a3b8;text-align:center;">
+						<p style="margin:0;font-size:12px;color:#94a3b8;text-align:center;">
 							%s · Automated notification — please do not reply
 						</p>
 					</td>
@@ -237,7 +285,7 @@ func buildEmailTemplateWithCTA(heading, greeting, mainText, details, footer, cta
 		</td></tr>
 	</table>
 </body>
-</html>`, heading, accent, product, heading, greeting, mainText, detailsHTML, ctaHTML, footerHTML, config.ProductSupportName)
+</html>`, heading, accent, logoURL, product, accent, emailType, heading, greeting, mainText, detailsHTML, ctaHTML, footerHTML, config.ProductSupportName)
 }
 
 // BuildPlainTextEmail creates a plain-text alternative body.
@@ -263,6 +311,12 @@ func BuildPlainTextEmail(heading, greeting, mainText, details, ctaURL string) st
 	return b.String()
 }
 
+func sendTemplatedEmail(to []string, subject, emailType, heading, greeting, mainText, details, footer, ctaLabel, ctaURL string) {
+	html := buildEmailTemplateWithCTA(emailType, heading, greeting, mainText, details, footer, ctaLabel, ctaURL)
+	plain := BuildPlainTextEmail(heading, greeting, mainText, details, ctaURL)
+	SendEmailWithPlain(to, subject, html, plain)
+}
+
 func stripHTMLApprox(s string) string {
 	replacer := strings.NewReplacer(
 		"<br>", "\n", "<br/>", "\n", "<br />", "\n",
@@ -282,6 +336,7 @@ func getEnvDefault(key, fallback string) string {
 // BuildTestEmailBody returns HTML for admin test sends.
 func BuildTestEmailBody() string {
 	return buildEmailTemplate(
+		"Test",
 		"Test Email",
 		"Hi Admin,",
 		fmt.Sprintf("This is a test message from %s notification settings.", config.ProductName),

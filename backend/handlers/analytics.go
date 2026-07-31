@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"dahticket-backend/config"
 	"dahticket-backend/database"
 	"dahticket-backend/models"
 
@@ -181,7 +182,8 @@ func GetAnalyticsTrend(c *gin.Context) {
 
 // GetAnalyticsSLA returns SLA compliance stats. Admin only.
 func GetAnalyticsSLA(c *gin.Context) {
-	var total, onTime, overdue, breached int64
+	var total, onTime, overdue, breached, atRisk int64
+	now := time.Now()
 
 	// All resolved/closed tickets with a due date
 	database.DB.Model(&models.Ticket{}).
@@ -195,13 +197,25 @@ func GetAnalyticsSLA(c *gin.Context) {
 
 	// Currently overdue (not yet resolved)
 	database.DB.Model(&models.Ticket{}).
-		Where("due_date < ? AND status NOT IN ? AND sla_paused_at IS NULL", time.Now(), []string{"resolved", "closed"}).
+		Where("due_date < ? AND status NOT IN ? AND sla_paused_at IS NULL", now, []string{"resolved", "closed"}).
 		Count(&overdue)
 
 	// Resolved but after due date (breached SLA)
 	database.DB.Model(&models.Ticket{}).
 		Where("resolved_at IS NOT NULL AND due_date IS NOT NULL AND resolved_at > due_date").
 		Count(&breached)
+
+	// Currently at risk: open tickets in the last N% of their SLA window
+	var openTickets []models.Ticket
+	database.DB.Select("id", "created_at", "due_date", "sla_paused_at", "status").
+		Where("due_date IS NOT NULL AND status NOT IN ? AND sla_paused_at IS NULL AND due_date > ?",
+			[]string{"resolved", "closed"}, now).
+		Find(&openTickets)
+	for _, t := range openTickets {
+		if config.GetSLAHealth(t.DueDate, t.CreatedAt, t.SlaPausedAt, string(t.Status), now) == config.SLAHealthAtRisk {
+			atRisk++
+		}
+	}
 
 	complianceRate := float64(0)
 	if total > 0 {
@@ -210,11 +224,12 @@ func GetAnalyticsSLA(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"sla": map[string]interface{}{
-			"total_resolved":  total,
-			"on_time":         onTime,
-			"breached":        breached,
-			"currently_overdue": overdue,
-			"compliance_rate":  complianceRate,
+			"total_resolved":     total,
+			"on_time":            onTime,
+			"breached":           breached,
+			"currently_overdue":  overdue,
+			"currently_at_risk":  atRisk,
+			"compliance_rate":    complianceRate,
 		},
 	})
 }

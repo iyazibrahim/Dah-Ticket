@@ -73,6 +73,7 @@ func main() {
 	// Initialize email notification service (env fallback, then DB override)
 	services.InitEmail()
 	services.InvalidateSettingsCache()
+	services.StartLoanDueReminderScanner(30 * time.Minute)
 
 	// Initialize Gin router
 	r := gin.Default()
@@ -131,6 +132,7 @@ func main() {
 	{
 		protected.GET("/auth/me", handlers.GetMe)
 		protected.PUT("/auth/me", handlers.UpdateMe)
+		protected.POST("/auth/change-password", handlers.ChangePassword)
 
 		// Notifications
 		notifications := protected.Group("/notifications")

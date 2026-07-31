@@ -24,16 +24,15 @@ func DispatchTicketCreated(orgID uint, requesterEmail, requesterName string, tic
 	if settings.EmailEnabled {
 		subject := fmt.Sprintf("[%s #%d] Ticket Created: %s", config.ProductName, ticketID, ticketTitle)
 		cta := FrontendBaseURL() + fmt.Sprintf("/tickets/%d", ticketID)
-		body := buildEmailTemplateWithCTA(
-			"Ticket Created",
+		sendTemplatedEmail(
+			[]string{requesterEmail}, subject,
+			"New Ticket", "Ticket Created",
 			fmt.Sprintf("Hi %s,", requesterName),
 			fmt.Sprintf("Your ticket <strong>#%d</strong> has been created successfully.", ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Status:</strong> Open", ticketTitle),
 			"Our IT team will review your ticket shortly.",
-			"View ticket",
-			cta,
+			"View ticket", cta,
 		)
-		SendEmail([]string{requesterEmail}, subject, body)
 	}
 
 	if settings.TelegramEnabled {
@@ -60,16 +59,15 @@ func DispatchTicketAssigned(orgID uint, assigneeEmail, assigneeName string, tick
 	if settings.EmailEnabled {
 		subject := fmt.Sprintf("[%s #%d] Ticket Assigned to You", config.ProductName, ticketID)
 		cta := FrontendBaseURL() + fmt.Sprintf("/tickets/%d", ticketID)
-		body := buildEmailTemplateWithCTA(
-			"Ticket Assigned",
+		sendTemplatedEmail(
+			[]string{assigneeEmail}, subject,
+			"Assignment", "Ticket Assigned",
 			fmt.Sprintf("Hi %s,", assigneeName),
 			fmt.Sprintf("Ticket <strong>#%d</strong> has been assigned to you.", ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s", ticketTitle),
 			"Please review and begin working on this ticket.",
-			"Open ticket",
-			cta,
+			"Open ticket", cta,
 		)
-		SendEmail([]string{assigneeEmail}, subject, body)
 	}
 
 	if settings.TelegramEnabled {
@@ -96,16 +94,15 @@ func DispatchTicketStatusChanged(orgID uint, recipientEmail, recipientName strin
 	if settings.EmailEnabled {
 		subject := fmt.Sprintf("[%s #%d] Status Updated: %s → %s", config.ProductName, ticketID, oldStatus, newStatus)
 		cta := FrontendBaseURL() + fmt.Sprintf("/tickets/%d", ticketID)
-		body := buildEmailTemplateWithCTA(
-			"Ticket Status Updated",
+		sendTemplatedEmail(
+			[]string{recipientEmail}, subject,
+			"Status Update", "Ticket Status Updated",
 			fmt.Sprintf("Hi %s,", recipientName),
 			fmt.Sprintf("The status of ticket <strong>#%d</strong> has been updated.", ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Status:</strong> %s → %s", ticketTitle, oldStatus, newStatus),
 			"",
-			"View ticket",
-			cta,
+			"View ticket", cta,
 		)
-		SendEmail([]string{recipientEmail}, subject, body)
 	}
 
 	if settings.TelegramEnabled {
@@ -132,16 +129,15 @@ func DispatchNewComment(orgID uint, recipientEmail, recipientName string, ticket
 	if settings.EmailEnabled {
 		subject := fmt.Sprintf("[%s #%d] New Comment from %s", config.ProductName, ticketID, commenterName)
 		cta := FrontendBaseURL() + fmt.Sprintf("/tickets/%d", ticketID)
-		body := buildEmailTemplateWithCTA(
-			"New Comment",
+		sendTemplatedEmail(
+			[]string{recipientEmail}, subject,
+			"Comment", "New Comment",
 			fmt.Sprintf("Hi %s,", recipientName),
 			fmt.Sprintf("%s added a comment on ticket <strong>#%d</strong>.", commenterName, ticketID),
 			fmt.Sprintf("<strong>Title:</strong> %s", ticketTitle),
 			fmt.Sprintf("Log in to %s to view the full comment.", config.ProductName),
-			"View comment",
-			cta,
+			"View comment", cta,
 		)
-		SendEmail([]string{recipientEmail}, subject, body)
 	}
 
 	if settings.TelegramEnabled {
@@ -188,16 +184,15 @@ func DispatchHQSiteTicketCreated(orgID uint, ticketID uint, ticketTitle, siteNam
 		if len(emails) > 0 {
 			subject := fmt.Sprintf("[%s #%d] New ticket from %s", config.ProductName, ticketID, siteName)
 			cta := FrontendBaseURL() + link
-			body := buildEmailTemplateWithCTA(
-				"New Site Ticket",
+			sendTemplatedEmail(
+				emails, subject,
+				"Site Ticket", "New Site Ticket",
 				"Hi team,",
 				fmt.Sprintf("A new ticket <strong>#%d</strong> was submitted from <strong>%s</strong>.", ticketID, siteName),
 				fmt.Sprintf("<strong>Title:</strong> %s<br><strong>Requester:</strong> %s<br><strong>Status:</strong> Open", ticketTitle, requesterName),
 				"Please review and assign from the central queue.",
-				"Open ticket",
-				cta,
+				"Open ticket", cta,
 			)
-			SendEmail(emails, subject, body)
 		}
 	}
 
@@ -212,4 +207,54 @@ func DispatchHQSiteTicketCreated(orgID uint, ticketID uint, ticketTitle, siteNam
 		)
 		SendTelegramMessage(msg)
 	}
+}
+
+// DispatchUserWelcome sends account credentials after admin creates a user.
+func DispatchUserWelcome(orgID uint, email, firstName, temporaryPassword string, mustChange bool) {
+	if email == "" {
+		return
+	}
+	settings, err := GetAppSettings(orgID)
+	if err != nil || !settings.EmailEnabled {
+		return
+	}
+
+	cta := FrontendBaseURL() + "/login"
+	changeNote := "You can sign in with this password."
+	if mustChange {
+		changeNote = "You will be asked to set a new password on first login."
+	}
+	subject := fmt.Sprintf("[%s] Your account has been created", config.ProductName)
+	sendTemplatedEmail(
+		[]string{email}, subject,
+		"Welcome", "Welcome to "+config.ProductName,
+		fmt.Sprintf("Hi %s,", firstName),
+		fmt.Sprintf("An administrator created your <strong>%s</strong> account.", config.ProductName),
+		fmt.Sprintf("<strong>Email:</strong> %s<br><strong>Temporary password:</strong> %s<br><strong>Note:</strong> %s", email, temporaryPassword, changeNote),
+		"Keep this password private. Do not forward this email.",
+		"Sign in", cta,
+	)
+}
+
+// DispatchPasswordReset emails a temporary password after admin reset.
+func DispatchPasswordReset(orgID uint, email, firstName, temporaryPassword string) {
+	if email == "" {
+		return
+	}
+	settings, err := GetAppSettings(orgID)
+	if err != nil || !settings.EmailEnabled {
+		return
+	}
+
+	cta := FrontendBaseURL() + "/login"
+	subject := fmt.Sprintf("[%s] Your password was reset", config.ProductName)
+	sendTemplatedEmail(
+		[]string{email}, subject,
+		"Password Reset", "Password Reset",
+		fmt.Sprintf("Hi %s,", firstName),
+		"An administrator reset your password. Use the temporary password below to sign in.",
+		fmt.Sprintf("<strong>Email:</strong> %s<br><strong>Temporary password:</strong> %s<br><strong>Note:</strong> You must set a new password after signing in.", email, temporaryPassword),
+		"If you did not expect this, contact your administrator.",
+		"Sign in", cta,
+	)
 }

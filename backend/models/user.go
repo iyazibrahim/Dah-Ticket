@@ -21,11 +21,12 @@ type User struct {
 	LastName  string         `gorm:"size:100;not null" json:"last_name"`
 	Email            string `gorm:"size:255;not null;uniqueIndex:idx_org_email" json:"email"`
 	OrganizationID   uint   `gorm:"not null;index;default:1;uniqueIndex:idx_org_email" json:"organization_id"`
-	Password  string         `gorm:"not null" json:"-"`
-	Role      Role           `gorm:"type:varchar(20);default:'employee'" json:"role"`
-	IsAdmin   bool           `gorm:"default:false" json:"is_admin"`
-	IsSuperAdmin bool        `gorm:"default:false" json:"is_super_admin"`
-	IsActive  bool           `gorm:"default:true" json:"is_active"`
+	Password            string `gorm:"not null" json:"-"`
+	MustChangePassword  bool   `gorm:"default:false" json:"must_change_password"`
+	Role                Role   `gorm:"type:varchar(20);default:'employee'" json:"role"`
+	IsAdmin             bool   `gorm:"default:false" json:"is_admin"`
+	IsSuperAdmin        bool   `gorm:"default:false" json:"is_super_admin"`
+	IsActive            bool   `gorm:"default:true" json:"is_active"`
 
 	PrimaryLocationID *uint     `gorm:"index" json:"primary_location_id,omitempty"`
 	PrimaryLocation   *Location `gorm:"foreignKey:PrimaryLocationID" json:"primary_location,omitempty"`

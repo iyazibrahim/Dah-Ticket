@@ -21,6 +21,7 @@ import UserSettingsPage from './pages/settings/UserSettingsPage';
 import AccountSettingsPage from './pages/settings/AccountSettingsPage';
 import NotificationSettingsPage from './pages/settings/NotificationSettingsPage';
 import ProfilePage from './pages/auth/ProfilePage';
+import ChangePasswordPage from './pages/auth/ChangePasswordPage';
 import ITAMDashboard from './pages/itam/ITAMDashboard';
 import AssetListPage from './pages/itam/AssetListPage';
 import AssetDetailPage from './pages/itam/AssetDetailPage';
@@ -40,6 +41,7 @@ function App() {
 
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
+            <Route path="/change-password" element={<ChangePasswordPage />} />
             <Route element={<DashboardLayout />}>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/tickets" element={<TicketsPage />} />

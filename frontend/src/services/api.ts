@@ -26,7 +26,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       clearAuthStorage();
-      if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register')) {
+      if (!window.location.pathname.includes('/login') && !window.location.pathname.includes('/register') && !window.location.pathname.includes('/change-password')) {
         window.location.href = '/login';
       }
     }
@@ -49,6 +49,9 @@ export const authAPI = {
 
   updateMe: (data: { first_name?: string; last_name?: string; old_password?: string; new_password?: string }) =>
     api.put('/auth/me', data),
+
+  changePassword: (data: { old_password?: string; new_password: string }) =>
+    api.post('/auth/change-password', data),
 };
 
 // --- Ticket API ---
@@ -157,8 +160,16 @@ export const adminAPI = {
 
   getUser: (id: number) => api.get(`/admin/users/${id}`),
 
-  createUser: (data: { first_name: string; last_name: string; email: string; password: string; role: string; is_admin?: boolean }) =>
-    api.post('/admin/users', data),
+  createUser: (data: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    password?: string;
+    password_mode?: 'manual' | 'auto';
+    role: string;
+    is_admin?: boolean;
+    primary_location_id?: number;
+  }) => api.post('/admin/users', data),
 
   updateUser: (id: number, data: Record<string, unknown>) =>
     api.put(`/admin/users/${id}`, data),

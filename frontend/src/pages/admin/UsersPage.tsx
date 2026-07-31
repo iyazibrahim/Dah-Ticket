@@ -251,7 +251,7 @@ export default function UsersPage() {
           open={showCreateModal}
           locations={locations}
           onClose={() => setShowCreateModal(false)}
-          onSuccess={() => { setShowCreateModal(false); fetchUsers(); showFeedback('success', 'User created'); }}
+          onSuccess={(msg) => { setShowCreateModal(false); fetchUsers(); showFeedback('success', msg || 'User created'); }}
         />
       )}
 
@@ -260,14 +260,53 @@ export default function UsersPage() {
           open={!!resetPasswordUser}
           user={resetPasswordUser}
           onClose={() => setResetPasswordUser(null)}
-          onSuccess={() => {
+          onSuccess={(msg) => {
             setResetPasswordUser(null);
-            showFeedback('success', `Password reset for ${resetPasswordUser.first_name}`);
+            showFeedback('success', msg || `Password reset for ${resetPasswordUser.first_name}`);
           }}
           onError={(msg) => showFeedback('error', msg)}
         />
       )}
     </PageContainer>
+  );
+}
+
+function TempPasswordResult({
+  password,
+  emailed,
+  onDone,
+}: {
+  password: string;
+  emailed: boolean;
+  onDone: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <div className="p-5 space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Share this temporary password with the user. They must change it on first login.
+        {emailed ? ' A welcome email was also sent.' : ' Email was not sent (SMTP not configured).'}
+      </p>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 px-3 py-2 rounded-lg border border-border bg-muted text-sm font-mono break-all">{password}</code>
+        <button type="button" onClick={copy} className="px-3 py-2 rounded-lg border border-border text-sm hover:bg-muted">
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <ModalFooter className="justify-end">
+        <button type="button" onClick={onDone} className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm">
+          Done
+        </button>
+      </ModalFooter>
+    </div>
   );
 }
 
@@ -281,29 +320,43 @@ function ResetPasswordModal({
   open: boolean;
   user: User;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (msg?: string) => void;
   onError: (msg: string) => void;
 }) {
+  const [mode, setMode] = useState<'auto' | 'manual'>('auto');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [emailed, setEmailed] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-    if (password !== confirm) {
-      setError('Passwords do not match');
-      return;
+    if (mode === 'manual') {
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters');
+        return;
+      }
+      if (password !== confirm) {
+        setError('Passwords do not match');
+        return;
+      }
     }
     setIsSubmitting(true);
     try {
-      await api.put(`/admin/users/${user.id}`, { password });
-      onSuccess();
+      const res = await api.put(`/admin/users/${user.id}`, {
+        password_mode: mode,
+        ...(mode === 'manual' ? { password } : {}),
+      });
+      const tmp = res.data?.temporary_password as string | undefined;
+      setEmailed(!!res.data?.password_emailed);
+      if (tmp) {
+        setTempPassword(tmp);
+      } else {
+        onSuccess(`Password reset for ${user.first_name}`);
+      }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
       const msg = axiosErr.response?.data?.error || 'Failed to reset password';
@@ -317,80 +370,129 @@ function ResetPasswordModal({
   return (
     <Modal open={open} onClose={onClose} unstyled className="max-w-md">
       <ModalHeader title={`Reset password — ${user.first_name} ${user.last_name}`} onClose={onClose} />
-      {error && (
-        <div className="mx-5 mt-4 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-lg text-red-700 dark:text-red-400 text-sm">
-          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
-        </div>
+      {tempPassword ? (
+        <TempPasswordResult
+          password={tempPassword}
+          emailed={emailed}
+          onDone={() => onSuccess(`Password reset for ${user.first_name}`)}
+        />
+      ) : (
+        <>
+          {error && (
+            <div className="mx-5 mt-4 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-lg text-red-700 dark:text-red-400 text-sm">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
+            </div>
+          )}
+          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Reset password for <span className="font-medium text-foreground">{user.email}</span>. They must change it on next login.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMode('auto')}
+                className={`flex-1 px-3 py-2 rounded-lg border text-sm ${mode === 'auto' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+              >
+                Auto-generate
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('manual')}
+                className={`flex-1 px-3 py-2 rounded-lg border text-sm ${mode === 'manual' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+              >
+                Set manually
+              </button>
+            </div>
+            {mode === 'manual' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">New password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1">Confirm password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </>
+            )}
+            <ModalFooter className="justify-end">
+              <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted">
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-50 flex items-center gap-2"
+              >
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+                Reset password
+              </button>
+            </ModalFooter>
+          </form>
+        </>
       )}
-      <form onSubmit={handleSubmit} className="p-5 space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Set a new password for <span className="font-medium text-foreground">{user.email}</span>. They can change it later from their profile.
-        </p>
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1">New password</label>
-          <input
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1">Confirm password</label>
-          <input
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-        <ModalFooter className="justify-end">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted">
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-50 flex items-center gap-2"
-          >
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-            Reset password
-          </button>
-        </ModalFooter>
-      </form>
     </Modal>
   );
 }
 
-function CreateUserModal({ open, locations, onClose, onSuccess }: { open: boolean; locations: Location[]; onClose: () => void; onSuccess: () => void }) {
+function CreateUserModal({ open, locations, onClose, onSuccess }: { open: boolean; locations: Location[]; onClose: () => void; onSuccess: (msg?: string) => void }) {
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
     email: '',
     password: '',
+    password_mode: 'auto' as 'auto' | 'manual',
     role: 'employee',
     is_admin: false,
     primary_location_id: '' as string | number,
   });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [emailed, setEmailed] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (form.password_mode === 'manual' && form.password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
     setIsSubmitting(true);
     try {
-      await api.post('/admin/users', {
-        ...form,
+      const res = await api.post('/admin/users', {
+        first_name: form.first_name,
+        last_name: form.last_name,
+        email: form.email,
+        password_mode: form.password_mode,
+        ...(form.password_mode === 'manual' ? { password: form.password } : {}),
+        role: form.role,
+        is_admin: form.is_admin,
         primary_location_id: form.primary_location_id ? Number(form.primary_location_id) : undefined,
       });
-      onSuccess();
+      const tmp = res.data?.temporary_password as string | undefined;
+      setEmailed(!!res.data?.password_emailed);
+      if (tmp) {
+        setTempPassword(tmp);
+      } else {
+        onSuccess('User created');
+      }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
       setError(axiosErr.response?.data?.error || 'Failed to create user');
@@ -403,70 +505,100 @@ function CreateUserModal({ open, locations, onClose, onSuccess }: { open: boolea
     <Modal open={open} onClose={onClose} unstyled className="max-w-md">
       <ModalHeader title="Create New User" onClose={onClose} />
 
-      {error && (
-        <div className="mx-5 mt-5 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-lg text-red-700 dark:text-red-400 text-sm">
-          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
-        </div>
-      )}
+      {tempPassword ? (
+        <TempPasswordResult
+          password={tempPassword}
+          emailed={emailed}
+          onDone={() => onSuccess(emailed ? 'User created and welcome email sent' : 'User created')}
+        />
+      ) : (
+        <>
+          {error && (
+            <div className="mx-5 mt-5 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-lg text-red-700 dark:text-red-400 text-sm">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" /> {error}
+            </div>
+          )}
 
-      <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">First name</label>
-            <input type="text" required value={form.first_name} onChange={(e) => setForm(f => ({ ...f, first_name: e.target.value }))}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-foreground mb-1">Last name</label>
-            <input type="text" required value={form.last_name} onChange={(e) => setForm(f => ({ ...f, last_name: e.target.value }))}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1">Email</label>
-          <input type="email" required value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1">Password</label>
-          <input type="password" required minLength={8} value={form.password} onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1">Role</label>
-          <select value={form.role} onChange={(e) => setForm(f => ({ ...f, role: e.target.value }))}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
-            <option value="employee">Employee</option>
-            <option value="it_agent">IT Agent</option>
-            <option value="manager">Manager</option>
-          </select>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          <input type="checkbox" checked={form.is_admin} onChange={(e) => setForm((f) => ({ ...f, is_admin: e.target.checked }))} />
-          Grant admin elevation
-        </label>
-        <div>
-          <label className="block text-xs font-medium text-foreground mb-1">Primary location</label>
-          <select
-            value={form.primary_location_id}
-            onChange={(e) => setForm((f) => ({ ...f, primary_location_id: e.target.value }))}
-            className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="">None — central / all locations</option>
-            {locations.map((loc) => (
-              <option key={loc.id} value={loc.id}>{loc.name}</option>
-            ))}
-          </select>
-          <p className="text-[11px] text-muted-foreground mt-1">Assign one location for site PIC admins. They only see data for that location.</p>
-        </div>
-        <ModalFooter className="justify-end">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted">Cancel</button>
-          <button type="submit" disabled={isSubmitting}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-50 flex items-center gap-2">
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Create
-          </button>
-        </ModalFooter>
-      </form>
+          <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">First name</label>
+                <input type="text" required value={form.first_name} onChange={(e) => setForm(f => ({ ...f, first_name: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1">Last name</label>
+                <input type="text" required value={form.last_name} onChange={(e) => setForm(f => ({ ...f, last_name: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">Email</label>
+              <input type="email" required value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-2">Password</label>
+              <div className="flex gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, password_mode: 'auto' }))}
+                  className={`flex-1 px-3 py-2 rounded-lg border text-sm ${form.password_mode === 'auto' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                >
+                  Auto-generate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, password_mode: 'manual' }))}
+                  className={`flex-1 px-3 py-2 rounded-lg border text-sm ${form.password_mode === 'manual' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                >
+                  Set manually
+                </button>
+              </div>
+              {form.password_mode === 'auto' ? (
+                <p className="text-[11px] text-muted-foreground">A temporary password will be shown once and emailed. User must change it on first login.</p>
+              ) : (
+                <input type="password" required minLength={8} value={form.password} onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">Role</label>
+              <select value={form.role} onChange={(e) => setForm(f => ({ ...f, role: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
+                <option value="employee">Employee</option>
+                <option value="it_agent">IT Agent</option>
+                <option value="manager">Manager</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input type="checkbox" checked={form.is_admin} onChange={(e) => setForm((f) => ({ ...f, is_admin: e.target.checked }))} />
+              Grant admin elevation
+            </label>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1">Primary location</label>
+              <select
+                value={form.primary_location_id}
+                onChange={(e) => setForm((f) => ({ ...f, primary_location_id: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-card text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="">None — central / all locations</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground mt-1">Assign one location for site PIC admins. They only see data for that location.</p>
+            </div>
+            <ModalFooter className="justify-end">
+              <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted">Cancel</button>
+              <button type="submit" disabled={isSubmitting}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-all disabled:opacity-50 flex items-center gap-2">
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Create
+              </button>
+            </ModalFooter>
+          </form>
+        </>
+      )}
     </Modal>
   );
 }

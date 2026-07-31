@@ -32,8 +32,12 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
-      navigate(from, { replace: true });
+      const loggedIn = await login(email, password);
+      if (loggedIn.must_change_password) {
+        navigate('/change-password', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
       setError(axiosErr.response?.data?.error || 'Failed to login. Please try again.');

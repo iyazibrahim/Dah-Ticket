@@ -30,7 +30,7 @@ import {
 } from '../../lib/ticketWorkflow';
 import { useLookups } from '../../hooks/useLookups';
 import StatusBadge from '../../components/ui/StatusBadge';
-import { formatInTimezone } from '../../lib/formatDate';
+import { formatInTimezone, getSLAHealth, slaHealthClass, slaHealthLabel } from '../../lib/formatDate';
 import { getActionButtonClasses, canShowListAccept, getListAcceptLabel, getTicketStatusClass, getTicketStatusLabel } from '../../lib/statusBadges';
 
 export default function TicketDetailPage() {
@@ -986,10 +986,22 @@ export default function TicketDetailPage() {
                 <span className="text-foreground">{formatDate(ticket.created_at)}</span>
               </div>
               {ticket.due_date && (
-                <div className="flex items-center gap-2 text-sm">
+                <div className="flex items-center gap-2 text-sm flex-wrap">
                   <Clock className="h-4 w-4 text-amber-500" />
                   <span className="text-muted-foreground">SLA Due:</span>
                   <span className="text-foreground">{formatInTimezone(ticket.due_date)}</span>
+                  {(() => {
+                    const health = getSLAHealth(ticket.due_date, ticket.created_at, {
+                      slaPausedAt: ticket.sla_paused_at,
+                      status: ticket.status,
+                    });
+                    if (health === 'none') return null;
+                    return (
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${slaHealthClass(health)}`}>
+                        {slaHealthLabel(health)}
+                      </span>
+                    );
+                  })()}
                 </div>
               )}
               {ticket.resolved_at && (
