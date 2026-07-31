@@ -165,7 +165,7 @@ DahTicket_V2/
 
 3. **Default Admin Account**
    ```
-   Email: admin@dahticket.com
+   Email: admin@digidesks.cc
    Password: admin123
    ```
    ⚠️ **Change this password immediately after first login!**

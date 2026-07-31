@@ -1,25 +1,32 @@
+# Local development stack
+# For Dokploy / production use docker-compose.prod.yml
+
 services:
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
     environment:
-      - PORT=8080
-      - DB_HOST=db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=dahticket
-      - DB_PORT=5432
-      - JWT_SECRET=change-me-to-a-secure-random-string-in-production
-      # SMTP Configuration (uncomment and fill to enable email notifications)
-      # - SMTP_HOST=smtp.office365.com
-      # - SMTP_PORT=587
-      # - SMTP_USERNAME=your-outlook-email@company.com
-      # - SMTP_PASSWORD=your-app-password
-      # - SMTP_FROM_NAME=DigiDesk IT Support
-      # - SMTP_FROM_ADDR=noreply@company.com
+      PORT: ${PORT:-8080}
+      DB_HOST: db
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-dahticket}
+      DB_PORT: ${DB_PORT:-5432}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-secure-random-string-in-production}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@digidesks.cc}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      SEED_DEMO_USERS: ${SEED_DEMO_USERS:-true}
+      SEED_LOCATIONS: ${SEED_LOCATIONS:-true}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+      SMTP_FROM_ADDR: ${SMTP_FROM_ADDR:-}
     volumes:
       - backend_uploads:/app/uploads
     depends_on:
@@ -33,6 +40,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
     ports:
       - "5173:80"
     networks:
@@ -46,13 +55,13 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=dahticket
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-dahticket}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -63,8 +72,8 @@ services:
   pgadmin:
     image: dpage/pgadmin4
     environment:
-      - PGADMIN_DEFAULT_EMAIL=admin@dahticket.com
-      - PGADMIN_DEFAULT_PASSWORD=admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@digidesks.cc}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
     ports:
       - "5050:80"
     depends_on:

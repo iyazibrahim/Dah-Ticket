@@ -2,6 +2,7 @@ package database
 
 import (
 	"log"
+	"os"
 	"strings"
 
 	"dahticket-backend/config"
@@ -10,29 +11,72 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	defaultAdminEmail    = "admin@digidesks.cc"
+	defaultAdminPassword = "admin123"
+	legacyAdminEmail     = "admin@dahticket.com"
+)
+
+func adminSeedEmail() string {
+	if v := strings.TrimSpace(os.Getenv("ADMIN_EMAIL")); v != "" {
+		return v
+	}
+	return defaultAdminEmail
+}
+
+func adminSeedPassword() string {
+	if v := os.Getenv("ADMIN_PASSWORD"); v != "" {
+		return v
+	}
+	return defaultAdminPassword
+}
+
+// envBool reads a truthy/falsy env var, or returns defaultVal when unset/empty.
+func envBool(key string, defaultVal bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return defaultVal
+	}
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultVal
+	}
+}
+
+func isSeedAdminEmail(email string) bool {
+	e := strings.ToLower(strings.TrimSpace(email))
+	return e == strings.ToLower(adminSeedEmail()) || e == strings.ToLower(legacyAdminEmail)
+}
+
 // MigrateUserRoles upgrades legacy admin role users to manager+is_admin model.
 func MigrateUserRoles() {
 	var legacyAdmins []models.User
 	DB.Where("role = ?", models.RoleAdmin).Find(&legacyAdmins)
 	for _, u := range legacyAdmins {
 		updates := map[string]interface{}{
-			"role":      models.RoleManager,
-			"is_admin":  true,
+			"role":     models.RoleManager,
+			"is_admin": true,
 		}
-		if strings.EqualFold(u.Email, "admin@dahticket.com") {
+		if isSeedAdminEmail(u.Email) {
 			updates["is_super_admin"] = true
 		}
 		DB.Model(&u).Updates(updates)
 		log.Printf("Migrated legacy admin user %s to manager+is_admin", u.Email)
 	}
 
-	// Ensure seeded super admin flags on existing account
-	DB.Model(&models.User{}).Where("LOWER(email) = LOWER(?)", "admin@dahticket.com").
-		Updates(map[string]interface{}{
-			"role":           models.RoleManager,
-			"is_admin":       true,
-			"is_super_admin": true,
-		})
+	// Ensure seeded super admin flags on configured / legacy seed accounts
+	for _, email := range []string{adminSeedEmail(), legacyAdminEmail} {
+		DB.Model(&models.User{}).Where("LOWER(email) = LOWER(?)", email).
+			Updates(map[string]interface{}{
+				"role":           models.RoleManager,
+				"is_admin":       true,
+				"is_super_admin": true,
+			})
+	}
 
 	// Sync KB approval_status from is_published for existing articles
 	DB.Exec(`UPDATE kb_articles SET approval_status = 'published' WHERE is_published = true AND (approval_status IS NULL OR approval_status = '' OR approval_status = 'draft')`)
@@ -43,6 +87,9 @@ func MigrateUserRoles() {
 func SeedDefaultAdmin() {
 	MigrateUserRoles()
 
+	email := adminSeedEmail()
+	password := adminSeedPassword()
+
 	var count int64
 	DB.Model(&models.User{}).Where("is_super_admin = ?", true).Count(&count)
 	if count > 0 {
@@ -50,18 +97,21 @@ func SeedDefaultAdmin() {
 		return
 	}
 
-	var existing models.User
-	if err := DB.Where("LOWER(email) = LOWER(?)", "admin@dahticket.com").First(&existing).Error; err == nil {
-		DB.Model(&existing).Updates(map[string]interface{}{
-			"role":           models.RoleManager,
-			"is_admin":       true,
-			"is_super_admin": true,
-		})
-		log.Println("Promoted existing admin@dahticket.com to Super Admin.")
-		return
+	// Promote configured or legacy seed email if the account already exists
+	for _, candidate := range []string{email, legacyAdminEmail} {
+		var existing models.User
+		if err := DB.Where("LOWER(email) = LOWER(?)", candidate).First(&existing).Error; err == nil {
+			DB.Model(&existing).Updates(map[string]interface{}{
+				"role":           models.RoleManager,
+				"is_admin":       true,
+				"is_super_admin": true,
+			})
+			log.Printf("Promoted existing %s to Super Admin.", existing.Email)
+			return
+		}
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		log.Printf("Failed to hash seed password: %v", err)
 		return
@@ -70,7 +120,7 @@ func SeedDefaultAdmin() {
 	admin := models.User{
 		FirstName:      "System",
 		LastName:       "Admin",
-		Email:          "admin@dahticket.com",
+		Email:          email,
 		Password:       string(hashedPassword),
 		Role:           models.RoleManager,
 		IsAdmin:        true,
@@ -84,11 +134,16 @@ func SeedDefaultAdmin() {
 		return
 	}
 
-	log.Println("Super Admin seeded: admin@dahticket.com / admin123")
+	log.Printf("Super Admin seeded: %s (password from ADMIN_PASSWORD / default)", email)
 }
 
 // SeedDefaultUsers creates default employee and IT agent accounts if they do not exist.
 func SeedDefaultUsers() {
+	if !envBool("SEED_DEMO_USERS", false) {
+		log.Println("SEED_DEMO_USERS disabled, skipping demo user seed.")
+		return
+	}
+
 	type SeedUser struct {
 		FirstName string
 		LastName  string
@@ -213,72 +268,76 @@ func SeedITAMDefaults() {
 		}
 	}
 
-	type locationSeed struct {
-		Name    string
-		Address string
-		Aliases []string
-	}
+	if envBool("SEED_LOCATIONS", true) {
+		type locationSeed struct {
+			Name    string
+			Address string
+			Aliases []string
+		}
 
-	seedLocations := []locationSeed{
-		{Name: "PDL 1", Address: "Penang Digital Library 1", Aliases: []string{"PDL1"}},
-		{Name: "PDL 2", Address: "Penang Digital Library 2", Aliases: []string{"PDL2"}},
-		{Name: "BDL", Address: "Butterworth Digital Library", Aliases: []string{}},
-		{Name: "BMDL", Address: "Batu Maung Digital Library", Aliases: []string{"BMOL", "Batu Maung Online Library"}},
-		{Name: "Digital Penang", Address: "Main Office", Aliases: []string{"OFFICE", "DIGITAL PENANG - MAIN OFFICE"}},
-	}
+		seedLocations := []locationSeed{
+			{Name: "PDL 1", Address: "Penang Digital Library 1", Aliases: []string{"PDL1"}},
+			{Name: "PDL 2", Address: "Penang Digital Library 2", Aliases: []string{"PDL2"}},
+			{Name: "BDL", Address: "Butterworth Digital Library", Aliases: []string{}},
+			{Name: "BMDL", Address: "Batu Maung Digital Library", Aliases: []string{"BMOL", "Batu Maung Online Library"}},
+			{Name: "Digital Penang", Address: "Main Office", Aliases: []string{"OFFICE", "DIGITAL PENANG - MAIN OFFICE"}},
+		}
 
-	for _, s := range seedLocations {
-		var existing models.Location
-		nameCandidates := append([]string{s.Name}, s.Aliases...)
-		found := false
-		for _, candidate := range nameCandidates {
-			if strings.TrimSpace(candidate) == "" {
+		for _, s := range seedLocations {
+			var existing models.Location
+			nameCandidates := append([]string{s.Name}, s.Aliases...)
+			found := false
+			for _, candidate := range nameCandidates {
+				if strings.TrimSpace(candidate) == "" {
+					continue
+				}
+				if err := DB.Where("LOWER(name) = LOWER(?)", candidate).First(&existing).Error; err == nil {
+					found = true
+					break
+				}
+			}
+
+			if !found && strings.TrimSpace(s.Address) != "" {
+				if err := DB.Where("LOWER(address) = LOWER(?)", s.Address).First(&existing).Error; err == nil {
+					found = true
+				}
+			}
+
+			if found {
+				existing.Name = s.Name
+				existing.Address = s.Address
+				existing.IsActive = true
+				if s.Name == "Digital Penang" {
+					existing.LocationType = "hq"
+				} else {
+					existing.LocationType = "site"
+				}
+				if err := DB.Save(&existing).Error; err != nil {
+					log.Printf("Failed updating location %s: %v", s.Name, err)
+				}
 				continue
 			}
-			if err := DB.Where("LOWER(name) = LOWER(?)", candidate).First(&existing).Error; err == nil {
-				found = true
-				break
-			}
-		}
 
-		if !found && strings.TrimSpace(s.Address) != "" {
-			if err := DB.Where("LOWER(address) = LOWER(?)", s.Address).First(&existing).Error; err == nil {
-				found = true
-			}
-		}
-
-		if found {
-			existing.Name = s.Name
-			existing.Address = s.Address
-			existing.IsActive = true
+			locType := "site"
 			if s.Name == "Digital Penang" {
-				existing.LocationType = "hq"
-			} else {
-				existing.LocationType = "site"
+				locType = "hq"
 			}
-			if err := DB.Save(&existing).Error; err != nil {
-				log.Printf("Failed updating location %s: %v", s.Name, err)
+			newLocation := models.Location{Name: s.Name, Address: s.Address, LocationType: locType, IsActive: true}
+			if err := DB.Create(&newLocation).Error; err != nil {
+				log.Printf("Failed seeding location %s: %v", s.Name, err)
 			}
-			continue
 		}
 
-		locType := "site"
-		if s.Name == "Digital Penang" {
-			locType = "hq"
+		legacyNames := []string{"PDL", "BMOL", "OFFICE"}
+		for _, legacyName := range legacyNames {
+			if err := DB.Model(&models.Location{}).
+				Where("LOWER(name) = LOWER(?)", legacyName).
+				Updates(map[string]any{"is_active": false}).Error; err != nil {
+				log.Printf("Failed deactivating legacy location %s: %v", legacyName, err)
+			}
 		}
-		newLocation := models.Location{Name: s.Name, Address: s.Address, LocationType: locType, IsActive: true}
-		if err := DB.Create(&newLocation).Error; err != nil {
-			log.Printf("Failed seeding location %s: %v", s.Name, err)
-		}
-	}
-
-	legacyNames := []string{"PDL", "BMOL", "OFFICE"}
-	for _, legacyName := range legacyNames {
-		if err := DB.Model(&models.Location{}).
-			Where("LOWER(name) = LOWER(?)", legacyName).
-			Updates(map[string]any{"is_active": false}).Error; err != nil {
-			log.Printf("Failed deactivating legacy location %s: %v", legacyName, err)
-		}
+	} else {
+		log.Println("SEED_LOCATIONS disabled, skipping location seed.")
 	}
 
 	var categories []models.AssetCategory

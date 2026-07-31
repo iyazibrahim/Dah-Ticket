@@ -38,7 +38,7 @@ docker-compose up --build
 
 ### 5. Login
 ```
-Email: admin@dahticket.com
+Email: admin@digidesks.cc
 Password: admin123
 ```
 ⚠️ **Change this password immediately!**

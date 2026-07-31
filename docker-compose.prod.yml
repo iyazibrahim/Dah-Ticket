@@ -4,15 +4,17 @@
 #   cp .env.production.example .env
 #   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 #
-# Dokploy: set the same variables in the Dokploy env panel and deploy this file.
-# Ensure dokploy-network exists on the host (Dokploy creates it automatically).
+# Dokploy:
+#   1. Use this compose file
+#   2. Set variables in Environment panel (written to .env next to compose)
+#   3. Assign your domain to the frontend service, port 80
+#   4. dokploy-network is created by Dokploy automatically
 
 name: dahticket-prod
 
 services:
   db:
     image: postgres:15-alpine
-    container_name: dahticket-db
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -20,7 +22,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,7 +35,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: dahticket-backend
     environment:
       PORT: ${PORT:-8080}
       DB_HOST: db
@@ -47,10 +48,17 @@ services:
       SLA_MEDIUM_HOURS: ${SLA_MEDIUM_HOURS:-24}
       SLA_HIGH_HOURS: ${SLA_HIGH_HOURS:-8}
       SLA_CRITICAL_HOURS: ${SLA_CRITICAL_HOURS:-2}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@digidesks.cc}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SEED_DEMO_USERS: ${SEED_DEMO_USERS:-false}
+      SEED_LOCATIONS: ${SEED_LOCATIONS:-true}
+      FRONTEND_URL: ${FRONTEND_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+      SMTP_FROM_ADDR: ${SMTP_FROM_ADDR:-}
     volumes:
       - backend_uploads:/app/uploads
     depends_on:
@@ -72,7 +80,6 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-/api}
-    container_name: dahticket-frontend
     depends_on:
       backend:
         condition: service_healthy
